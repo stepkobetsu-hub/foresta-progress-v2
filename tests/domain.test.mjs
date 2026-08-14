@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   calculateProgress,
   comparePositions,
+  formatProgressGroupLabel,
+  formatProgressUnitNumber,
   homeworkSummary,
   isActiveStatus,
   isOmittable,
@@ -41,5 +43,10 @@ assert.equal(makeHomework("数学", "u1", "2026-08-15").length, 3);
 assert.equal(makeHomework("英語", "u1", "2026-08-15").length, 5);
 assert.equal(comparePositions(3, 4), "学校より先");
 assert.deepEqual(homeworkSummary([{ studentChecked: true, teacherChecked: false }, { studentChecked: true, teacherChecked: true }]), { total: 2, studentChecked: 2, teacherChecked: 1 });
+assert.equal(formatProgressUnitNumber("英語", { chapter: "2", unitNumber: "Part1" }), "2-Part1");
+assert.equal(formatProgressUnitNumber("数学", { chapter: "2", unitNumber: "2-1" }), "2-1");
+assert.equal(formatProgressGroupLabel("英語", "2"), "UNIT 2");
+assert.equal(formatProgressGroupLabel("数学", "2"), "第2章");
+assert.equal(formatProgressGroupLabel("英語", "[1年生] 9"), "1年生 UNIT 9");
 
-console.log("domain tests: 24 assertions passed");
+console.log("domain tests: 29 assertions passed");

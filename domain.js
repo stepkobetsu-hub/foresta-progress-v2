@@ -95,3 +95,23 @@ export function homeworkSummary(items) {
     teacherChecked: rows.filter((item) => item.teacherChecked).length,
   };
 }
+
+export function formatProgressUnitNumber(subject, unit = {}) {
+  const number = String(unit.unitNumber ?? "").trim();
+  const chapter = String(unit.chapter ?? "").trim();
+  if (subject === "英語" && chapter && /^part\s*\d/iu.test(number)) {
+    return `${chapter}-${number.replace(/^part\s*/iu, "Part")}`;
+  }
+  return number;
+}
+
+export function formatProgressGroupLabel(subject, chapter) {
+  const value = String(chapter ?? "").trim();
+  if (subject === "英語") {
+    const previousGrade = value.match(/^\[([^\]]+)\]\s*(.+)$/u);
+    if (previousGrade) return `${previousGrade[1]} UNIT ${previousGrade[2]}`;
+    if (/^\d+$/u.test(value)) return `UNIT ${value}`;
+  }
+  if (subject === "数学" && /^\d+$/u.test(value)) return `第${value}章`;
+  return value;
+}
