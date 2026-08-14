@@ -3,62 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#13795b">
+  <meta name="theme-color" content="#0f766e">
   <title>フォレスタ進捗管理</title>
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <header class="app-header">
-    <button id="homeButton" class="brand" type="button" aria-label="トップへ">
-      <span class="brand-mark">F</span><span>フォレスタ進捗管理</span>
-    </button>
-    <div id="userBadge" class="user-badge hidden"></div>
+  <header class="topbar">
+    <a class="brand" href="#home"><span class="brand-mark">F</span><span><strong>フォレスタ進捗管理</strong><small>通常授業・学校先取り</small></span></a>
+    <a class="goal-link" href="https://stepkobetsu-hub.github.io/foresta-step-progress/">フォレスタ＆ゴールへ</a>
   </header>
 
-  <main id="app" class="app-shell">
-    <section id="loginView" class="login-view">
-      <div class="hero-card">
-        <p class="eyebrow">FORESTA PROGRESS</p>
-        <h1>今日の一歩を、<br>テストの自信へ。</h1>
-        <p class="hero-copy">授業・宿題・学校進度をひとつにまとめて、次にやることを迷わない。</p>
+  <main id="app" class="shell">
+    <section id="entry" class="entry card">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-login-tab="student">生徒用</button>
+        <button class="tab" data-login-tab="staff">講師用</button>
       </div>
-
-      <div class="login-card">
-        <div class="role-tabs" role="tablist" aria-label="ログイン種別">
-          <button class="role-tab active" data-role="student" role="tab" aria-selected="true">生徒用</button>
-          <button class="role-tab" data-role="teacher" role="tab" aria-selected="false">講師用</button>
-        </div>
-
+      <div class="entry-copy">
+        <span class="eyebrow">学校より一歩先へ</span>
+        <h1>今日の授業を、次のテストにつなげる。</h1>
+        <p>学校進度、フォレスタ進度、CT、宿題をひとつの画面で確認します。</p>
+      </div>
+      <form id="loginForm" class="login-form">
+        <h2 id="loginTitle">生徒ログイン</h2>
         <fieldset class="device-choice">
-          <legend>この端末は？</legend>
-          <label><input type="radio" name="device" value="personal" checked> 自分のスマートフォン・タブレット</label>
-          <label><input type="radio" name="device" value="shared"> 塾の共用端末</label>
+          <legend>この端末はどちらですか？</legend>
+          <label><input type="radio" name="device" value="personal" required><span><b>自分のスマートフォン・タブレット</b><small>ログイン状態を安全に記憶できます</small></span></label>
+          <label><input type="radio" name="device" value="shared" required><span><b>塾の共用端末</b><small>ログイン情報を端末に残しません</small></span></label>
         </fieldset>
-
-        <form id="loginForm" class="login-form">
-          <label><span id="loginIdLabel">生徒ID</span><input id="loginId" autocomplete="username" required></label>
-          <label><span>パスワード</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
-          <button id="loginButton" class="primary-button" type="submit">ログイン</button>
-          <p id="loginStatus" class="form-status" aria-live="polite"></p>
-        </form>
-
-        <button id="demoButton" class="text-button" type="button">画面デモを開く</button>
-        <button id="adminButton" class="admin-link" type="button">管理者ページ</button>
-      </div>
+        <label><span id="idLabel">生徒番号</span><input id="loginId" autocomplete="username" required></label>
+        <label><span>パスワード</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">ログイン</button>
+        <p id="loginMessage" class="form-message" aria-live="polite"></p>
+      </form>
+      <button id="adminEntry" class="admin-entry" type="button">管理者ページ</button>
     </section>
 
-    <section id="workspace" class="workspace hidden">
-      <nav id="mainNav" class="main-nav" aria-label="メインメニュー"></nav>
-      <div id="screen" class="screen"></div>
-    </section>
+    <section id="workspace" class="workspace hidden" aria-live="polite"></section>
   </main>
 
-  <dialog id="detailDialog">
-    <div class="dialog-head"><h2 id="dialogTitle">詳細</h2><button id="dialogClose" class="icon-button" aria-label="閉じる">×</button></div>
-    <div id="dialogBody"></div>
+  <div id="toast" class="toast" role="status"></div>
+  <div id="loading" class="loading hidden"><span></span><p>読み込んでいます…</p></div>
+  <dialog id="reauthDialog">
+    <form id="reauthForm" method="dialog" class="dialog-form">
+      <button class="dialog-close" value="cancel" aria-label="閉じる">×</button>
+      <span class="eyebrow">管理者設定</span><h2>講師認証をもう一度</h2>
+      <p>設定を開くため、講師IDとパスワードを再入力してください。</p>
+      <label>講師ID<input id="reauthId" autocomplete="username" required></label>
+      <label>パスワード<input id="reauthPassword" type="password" autocomplete="current-password" required></label>
+      <button id="reauthSubmit" class="primary" type="submit" value="default">認証して開く</button>
+      <p id="reauthMessage" class="form-message"></p>
+    </form>
   </dialog>
 
+  <template id="unitTemplate">
+    <label class="unit-row"><input type="checkbox"><span class="unit-number"></span><span class="unit-name"></span><span class="unit-meta"></span></label>
+  </template>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

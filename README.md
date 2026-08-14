@@ -1,29 +1,25 @@
 # フォレスタ進捗管理 v2
 
-既存のCloudflare Worker・D1・旧履歴へ依存しない、新規の学習進捗管理アプリです。
+学校の授業を先取りする通常授業用の進捗管理アプリです。既存のステップ＆ゴール進捗管理・旧フォレスタ進捗管理とは別の新規プロジェクトです。
 
 ## 構成
 
-- `index.html` / `styles.css` / `app.js`: GitHub Pages用SPA
-- `config.js`: 公開したGoogle Apps Script Web App URL
-- `gas/Code.gs`: 認証・保存API
-- `gas/appsscript.json`: Apps Script設定
+- GitHub Pages: `index.html`, `styles.css`, `app.js`, `config.js`
+- Google Apps Script: `gas/Code.gs`, `gas/appsscript.json`
+- 保存先: 新規の専用Googleスプレッドシート
 
-既存の時間割／講師マスターは読み取り専用です。授業記録、宿題、CT、目標点、コメント等は新規の専用Googleスプレッドシートへ保存します。
+## 本番URL
 
-Apps Scriptの「スクリプト プロパティ」に `DATA_SPREADSHEET_ID`、`STUDENT_MASTER_ID`、`TEACHER_MASTER_ID` を設定してください。GoogleファイルIDは公開リポジトリへ保存しません。
+- アプリ: https://stepkobetsu-hub.github.io/foresta-progress-v2/
+- Apps Script API: https://script.google.com/macros/s/AKfycbx-KkkOPgOTgauFIcT9JFbuz1zgULkZRNx25PwbTWQabw2jUKdZr9ia2kkJljScEBSXVg/exec
+- 保存先・各マスタ・正式単元表のIDは、公開リポジトリに置かずApps ScriptのScript Propertiesで管理します。
 
-## セキュリティ
+## 公開時の設定
 
-- 共用端末ではIDを保存しません。
-- 管理者操作は画面とApps Scriptの両方で権限を確認します。
-- CT不合格メールは、保存シートの通知先と確認フラグが設定されるまで送信せず、通知ログへ保留します。
-- パスワードはフロント側へ返しません。
+1. `gas/Code.gs` を新規Apps Scriptへ配置し、ウェブアプリとしてデプロイします。
+2. Apps ScriptのScript Propertiesに `DB_ID`、各マスタID、各正式単元表IDを設定します。
+3. 取得した `/exec` URLを `config.js` の `apiUrl` に設定します。
+4. `refreshUnitMaster()` を一度実行し、正式な26F進行表から単元マスタを作成します。
+5. 検証完了後、保存シート「設定」の `MAIL_SUPPRESS` を `FALSE` にします。
 
-## ローカル確認
-
-```sh
-python -m http.server 4173
-```
-
-`http://localhost:4173/` を開き、「画面デモを開く」で主要画面を確認できます。
+パスワード、セッショントークン、生徒の進捗データはGitHubへ保存しません。
