@@ -1,389 +1,461 @@
-(() => {
-  'use strict';
+import { CONFIG } from "./config.js";
+import { SUBJECTS, TRACKED_SUBJECTS, homeworkSummary } from "./domain.js";
 
-  const $ = (s, root = document) => root.querySelector(s);
-  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  const fmt = value => value ? String(value).replace(/-/g, '/') : '未登録';
-  const app = $('#app');
-  const entry = $('#entry');
-  const workspace = $('#workspace');
-  const loading = $('#loading');
-  const toastEl = $('#toast');
-  const cfg = window.FORESTA_CONFIG || {};
-  const SUBJECTS = ['英語', '数学', '国語', '理科', '社会'];
-  const state = { loginType: 'student', token: '', role: '', user: null, device: '', tabs: [], activeStudentId: '', detail: null, lesson: null, adminAll: false, adminRows: [], adminSettings: null, adminVerified: false, adminIntent: false };
+const $ = (id) => document.getElementById(id);
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+const fmtDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value)) : "未設定";
+const fmtDateTime = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—";
 
-  function busy(on, message = '読み込んでいます…') {
-    $('p', loading).textContent = message;
-    loading.classList.toggle('hidden', !on);
-  }
+const state = {
+  role: "student",
+  device: "",
+  session: null,
+  adminToken: "",
+  selectedStudents: [],
+  activeStudentId: "",
+  activeView: "home",
+  dashboard: null,
+};
 
-  function toast(message) {
-    toastEl.textContent = message;
-    toastEl.classList.add('show');
-    clearTimeout(toastEl._timer);
-    toastEl._timer = setTimeout(() => toastEl.classList.remove('show'), 2800);
-  }
+const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", device: "forestaDeviceMode" };
+const DEFAULT_HOMEWORK = {
+  数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],
+  英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
+};
 
-  async function api(action, payload = {}, silent = false) {
-    if (!cfg.apiUrl || cfg.apiUrl.includes('__GAS_')) throw new Error('APIの公開設定が完了していません。');
-    if (!silent) busy(true);
-    try {
-      const response = await fetch(cfg.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, payload })
-      });
-      const body = await response.json();
-      if (!body.ok) throw new Error(body.error || '処理に失敗しました。');
-      return body.data;
-    } finally {
-      if (!silent) busy(false);
-    }
-  }
-
-  function saveSession() {
-    const data = JSON.stringify({ token: state.token, role: state.role, user: state.user, device: state.device });
-    const store = state.device === 'personal' ? localStorage : sessionStorage;
-    store.setItem('forestaSession', data);
-  }
-
-  function clearSession(all = false) {
-    sessionStorage.removeItem('forestaSession');
-    if (all || state.device === 'personal') localStorage.removeItem('forestaSession');
-  }
-
-  function restoreSession() {
-    for (const [store, device] of [[sessionStorage, 'shared'], [localStorage, 'personal']]) {
-      try {
-        const data = JSON.parse(store.getItem('forestaSession') || 'null');
-        if (data?.token) return { ...data, device };
-      } catch (_) { /* ignore damaged local state */ }
-    }
-    return null;
-  }
-
-  function head(title, subtitle, extra = '') {
-    return `<header class="workspace-head"><div class="workspace-title"><span class="eyebrow">${esc(state.role === 'student' ? '生徒用' : state.role === 'admin' ? '管理者' : '講師用')}</span><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div><div class="head-actions">${extra}<button class="ghost" data-action="logout">ログアウト</button></div></header>`;
-  }
-
-  function empty(message) { return `<div class="empty">${esc(message)}</div>`; }
-  function status(text, kind = 'muted') { return `<span class="status ${kind}">${esc(text)}</span>`; }
-  function metric(label, value, note = '') { return `<div class="metric"><small>${esc(label)}</small><b>${esc(value)}</b>${note ? `<small>${esc(note)}</small>` : ''}</div>`; }
-
-  function testCard(test) {
-    if (!test) return `<section class="panel"><h2>次回テスト</h2>${empty('次回テスト未登録')}</section>`;
-    const kind = test.daysLeft <= 14 ? 'warn' : 'ok';
-    return `<section class="panel"><h2>次回テスト</h2><div class="grid three">${metric(test.name, `${fmt(test.start)}〜${fmt(test.end)}`)}${metric('テストまで', `あと${test.daysLeft}日`)}<div class="metric"><small>準備状況</small><b>${status(test.daysLeft <= 14 ? '直前期' : '準備期間', kind)}</b></div></div></section>`;
-  }
-
-  function progressCards(progress = [], studentView = false) {
-    if (!progress.length) return empty('進行情報はまだありません。');
-    return `<div class="grid two">${progress.map(p => {
-      const cmpKind = p.comparison === '遅れ' ? 'danger' : p.comparison === '先行' ? 'ok' : p.comparison === '同じ' ? 'warn' : 'muted';
-      const pace = p.remaining == null ? '未設定' : p.emergency ? '緊急' : `${p.remaining}単元 / ${p.lessonsRemaining}回`;
-      const visibleUnits = (p.units || []).filter(u => u.learnedDates?.length || u.schoolCurrent || u.predictedInRange || u.confirmedInRange || u.ct);
-      return `<section class="panel"><div class="toolbar"><h2>${esc(p.subject)}</h2>${status(p.comparison, cmpKind)}</div><div class="grid three">${metric('フォレスタ', p.forestaUnit?.name || '未開始')}${metric('学校', p.schoolUnit?.name || '未登録')}${metric('残り / 授業回', pace, p.requiredPerLesson == null ? '' : `1回 ${p.requiredPerLesson}単元ペース`)}</div><h3 style="margin-top:18px">進行表</h3>${visibleUnits.length ? `<div class="unit-list">${visibleUnits.map(unitRowHtml).join('')}</div>` : empty(studentView ? '学習済み・学校進度・テスト範囲はまだ登録されていません。' : '表示対象の単元はありません。')}</section>`;
-    }).join('')}</div>`;
-  }
-
-  function unitRowHtml(u, controls = false) {
-    const classes = ['unit-row', u.previous ? 'previous' : '', u.schoolCurrent ? 'school' : '', u.rangeMode === 'confirmed' && !u.confirmedInRange ? 'out-confirmed' : u.rangeMode === 'predicted' && !u.predictedInRange ? 'out-predicted' : ''].filter(Boolean).join(' ');
-    const chips = [u.difficulty && `<span class="chip${u.omittable ? ' optional' : ''}">${esc(u.difficulty)}${u.omittable ? ' 省略可' : ''}</span>`, u.learnedDates?.length && `<span class="chip">学習 ${esc(u.learnedDates.at(-1))}</span>`, u.schoolCurrent && '<span class="chip">学校</span>', (u.confirmedInRange || u.predictedInRange) && `<span class="chip">${u.confirmedInRange ? '決定範囲' : '予想範囲'}</span>`, u.ct && `<span class="chip${u.ct === '×' ? ' ct-x' : ''}">CT ${esc(u.ct)}</span>`].filter(Boolean).join('');
-    return `<label class="${classes}" data-unit-id="${esc(u.id)}">${controls ? `<input type="checkbox" value="${esc(u.id)}">` : '<span></span>'}<span class="unit-number">${esc(u.number)}</span><span>${esc(u.name)}</span><span class="unit-meta">${chips}</span></label>`;
-  }
-
-  function homeworkHtml(items = [], mode = 'student') {
-    if (!items.length) return empty('宿題はありません。');
-    const groups = Object.groupBy ? Object.groupBy(items, h => h.unitId || 'その他') : items.reduce((a, h) => ((a[h.unitId || 'その他'] ||= []).push(h), a), {});
-    return Object.entries(groups).map(([unit, rows]) => `<div class="homework-group"><h3>${esc(unit === 'その他' ? 'その他' : rows[0].subject + '・単元別')}</h3><div class="homework-list">${rows.map(h => {
-      const overdue = h.due && new Date(`${h.due}T23:59:59`) < new Date() && !h.teacherChecked;
-      const label = h.teacherChecked ? '完了' : h.studentChecked ? '確認待ち' : overdue ? '期限超過' : '未完了';
-      const kind = h.teacherChecked ? 'muted' : h.studentChecked ? 'warn' : overdue ? 'danger' : 'muted';
-      const checked = mode === 'student' ? h.studentChecked : h.teacherChecked;
-      return `<label class="homework-card ${h.teacherChecked ? 'complete' : ''} ${overdue ? 'overdue' : ''}"><input type="checkbox" data-homework-id="${esc(h.id)}" data-homework-mode="${esc(mode)}" ${checked ? 'checked' : ''}><span><p>${esc(h.content || h.type)}</p><small>推奨完了日 ${fmt(h.due)}${h.studentCheckedAt ? `・生徒 ${esc(h.studentCheckedAt)}` : ''}${h.teacherCheckedAt ? `・講師 ${esc(h.teacherCheckedAt)}` : ''}</small></span>${status(label, kind)}</label>`;
-    }).join('')}</div></div>`).join('');
-  }
-
-  function scoresHtml(scores = []) {
-    if (!scores.length) return empty('成績履歴はまだありません。');
-    return `<div class="table-wrap"><table class="score-table"><thead><tr><th>年度</th><th>回</th><th>国語</th><th>社会</th><th>数学</th><th>理科</th><th>英語</th><th>合計</th><th>順位</th></tr></thead><tbody>${scores.map(s => `<tr><td>${esc(s.year)}</td><td>${esc(s.testNumber)}</td><td>${esc(s.japanese)}</td><td>${esc(s.social)}</td><td>${esc(s.math)}</td><td>${esc(s.science)}</td><td>${esc(s.english)}</td><td>${esc(s.total)}</td><td>${esc(s.rank)}</td></tr>`).join('')}</tbody></table></div>`;
-  }
-
-  async function renderStudent() {
-    state.role = 'student';
-    const data = await api('studentHome', { token: state.token });
-    state.detail = data;
-    const t = data.targets || {};
-    workspace.innerHTML = head(data.student.name, `${data.student.id}・${data.student.grade}・${data.student.school}`) + testCard(data.test) + `<section class="panel"><h2>目標点</h2>${data.test ? `<form id="targetForm" class="assignment-grid">${[['japanese','国語'],['social','社会'],['math','数学'],['science','理科'],['english','英語']].map(([key,label]) => `<label class="field">${label}<input type="number" min="0" max="100" name="${key}" value="${esc(t[key])}"></label>`).join('')}<button class="primary" type="submit">目標点を保存</button></form>` : empty('次回テスト登録後に入力できます。')}</section><section class="panel"><h2>次回までの宿題</h2><p class="status warn">宿題は2日以内に終わらせよう！</p>${homeworkHtml(data.homework, 'student')}</section><section class="panel"><div class="toolbar"><h2>定期テスト履歴</h2><a class="secondary" href="${esc(data.scoreLink)}" target="_blank" rel="noopener">成績を訂正する</a></div>${scoresHtml(data.scores)}</section><section><h2>フォレスタ進行</h2>${progressCards(data.progress, true)}</section>`;
-    showWorkspace();
-  }
-
-  function staffSearchScreen() {
-    state.role = 'staff';
-    workspace.innerHTML = head(state.user.name, `担当教室 ${state.user.classrooms?.join('・') || '未登録'}`, `<button class="secondary" data-action="open-admin">管理者ページ</button>`) + `<section class="panel"><h2>本日の担当生徒を選ぶ</h2><form id="searchForm" class="toolbar"><input name="query" placeholder="生徒名・ふりがな・生徒ID・学校"><select name="classroom"><option value="">全教室</option>${(state.user.classrooms || []).map(x => `<option>${esc(x)}</option>`).join('')}</select><select name="grade"><option value="">全学年</option><option>中1</option><option>中2</option><option>中3</option></select><button class="primary" type="submit">検索</button></form><p class="muted">同時に開ける生徒は最大2人です。</p><div id="studentResults" class="student-results">${empty('条件を入力して検索してください。')}</div></section><div id="studentTabs" class="student-tabs"></div><div id="studentDetail"></div>`;
-    showWorkspace();
-  }
-
-  async function searchStudents(form) {
-    const data = Object.fromEntries(new FormData(form));
-    const rows = await api('searchStudents', { token: state.token, ...data });
-    $('#studentResults').innerHTML = rows.length ? rows.map(s => `<button class="student-result" data-open-student="${esc(s.id)}"><b>${esc(s.name)} <small>${esc(s.id)}</small></b><small>${esc(s.classroom)}・${esc(s.grade)}・${esc(s.school)}</small><small>${esc((s.subjects || []).join('・') || '受講科目未登録')}</small></button>`).join('') : empty('該当する生徒はいません。');
-  }
-
-  async function openStudent(studentId, subject = '') {
-    if (!state.tabs.includes(studentId)) {
-      if (state.tabs.length >= 2) return toast('同時に担当できる生徒は2人までです。');
-      state.tabs.push(studentId);
-    }
-    state.activeStudentId = studentId;
-    state.lesson = null;
-    state.detail = await api('studentDetail', { token: state.token, studentId, subject });
-    renderStaffDetail();
-  }
-
-  function renderStaffDetail() {
-    const d = state.detail;
-    $('#studentTabs').innerHTML = state.tabs.map(id => `<button class="student-tab ${id === state.activeStudentId ? 'active' : ''}" data-switch-student="${esc(id)}">${esc(id === d.student.id ? d.student.name : id)}</button>`).join('');
-    const candidates = d.staffCandidates || [];
-    const ordered = [...candidates].sort((a,b) => (a.id === state.user.id ? -1 : 0) - (b.id === state.user.id ? -1 : 0));
-    const preferred = d.schedule.subjects || [];
-    const subjects = [...new Set([...preferred, ...SUBJECTS])];
-    $('#studentDetail').innerHTML = `<section class="panel"><div class="workspace-head"><div><span class="eyebrow">担当生徒</span><h2>${esc(d.student.name)}</h2><p>${esc(d.student.id)}・${esc(d.student.classroom)}・${esc(d.student.grade)}・${esc(d.student.school)}</p></div><a class="secondary" href="${esc(d.scoreLink)}" target="_blank" rel="noopener">成績を訂正する</a></div>${d.note ? `<button class="note-collapsed" type="button" title="${esc(d.note.text)}">⚠ ${esc(d.note.text)}（${esc(d.note.author)}・${esc(d.note.updatedAt)}）</button>` : ''}</section>${testCard(d.test)}<section class="panel"><h2>本日の担当</h2><form id="assignmentForm" class="assignment-grid"><label class="field">担当講師<select name="staffId" required>${ordered.map(x => `<option value="${esc(x.id)}" ${x.id === state.user.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label><label class="field">授業科目<select name="subject" required>${subjects.map((x,i) => `<option ${i === 0 ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label><button class="primary" type="submit">本日の担当を決定</button></form></section><section class="grid two"><div class="panel"><h2>前回の宿題</h2>${homeworkHtml(d.homework, 'teacher')}</div><div class="panel"><h2>定期テスト履歴</h2>${scoresHtml(d.scores)}</div></section><div id="lessonArea">${progressCards(d.progress)}</div>`;
-  }
-
-  async function startLesson(form) {
-    const values = Object.fromEntries(new FormData(form));
-    const data = await api('startLesson', { token: state.token, studentId: state.activeStudentId, ...values });
-    state.lesson = data;
-    renderLessonArea();
-  }
-
-  function renderLessonArea() {
-    const l = state.lesson;
-    const units = l.units || [];
-    const ctUnits = units.filter(u => u.previous);
-    const defaults = l.subject === '数学' ? ['TRYの赤×直し','exercise','宿題の赤×直し'] : l.subject === '英語' ? ['KeyWords「☆日→英」暗記','exercise「暗記マーク」暗記','Try赤×直し','exercise','宿題の赤×直し'] : [];
-    $('#lessonArea').innerHTML = `<section class="panel"><div class="workspace-head"><div><span class="eyebrow">授業入力中</span><h2>${esc(l.subject)}・${esc(l.assignedStaff.name)}</h2></div>${status('入力中','warn')}</div></section><div class="lesson-layout"><section class="panel"><h2>学校進度・今回進んだ単元</h2><p class="muted">学校の現在位置は「学校位置」ボタン、今回進んだ単元はチェックで登録します。</p><div class="unit-list">${units.length ? units.map(u => `<div class="${['unit-row',u.previous?'previous':'',u.schoolCurrent?'school':''].filter(Boolean).join(' ')}"><input type="checkbox" data-learned-unit value="${esc(u.id)}"><span class="unit-number">${esc(u.number)}</span><span>${esc(u.name)}</span><span class="unit-meta"><button type="button" class="ghost" data-school-unit="${esc(u.id)}">学校位置</button>${u.previous ? `<button type="button" class="secondary" data-ct-unit="${esc(u.id)}">CT</button>` : ''}</span></div>`).join('') : empty('この科目の正式な進行表が未設定です。')}</div></section><aside class="grid"><section class="panel"><h2>CT</h2>${ctUnits.length ? '<p>前回範囲のCTボタンから1単元を選択してください。</p><div id="ctBox" class="empty">CT単元未選択</div>' : empty('前回範囲がありません。')}</section><section class="panel"><h2>次回宿題</h2><p class="muted">不要な項目は外せます。推奨完了日は2日後です。</p><div class="homework-list">${defaults.map(x => `<label><input type="checkbox" data-homework-type value="${esc(x)}" checked> ${esc(x)}</label>`).join('')}</div><label class="field">その他<textarea id="otherHomework" rows="3" placeholder="必要な場合のみ入力"></textarea></label></section><section class="panel"><h2>講師コメント</h2><label class="field"><textarea id="lessonComment" rows="3" placeholder="気になること・備考"></textarea></label></section><button class="primary" data-action="finish-lesson" ${units.length ? '' : 'disabled'}>授業記録と宿題を保存</button></aside></div>`;
-  }
-
-  async function saveSchoolProgress(unitId) {
-    await api('saveSchoolProgress', { token: state.token, lessonId: state.lesson.lessonId, unitId });
-    toast('学校進度を保存しました。');
-  }
-
-  function chooseCt(unitId) {
-    const u = state.lesson.units.find(x => x.id === unitId);
-    $('#ctBox').className = '';
-    $('#ctBox').innerHTML = `<p><b>${esc(u.name)}</b></p><div class="segmented">${['◎','〇','×'].map(x => `<button type="button" data-ct-result="${x}" data-unit-id="${esc(unitId)}">${x}</button>`).join('')}</div>`;
-  }
-
-  async function saveCt(button) {
-    const result = button.dataset.ctResult;
-    await api('saveCT', { token: state.token, lessonId: state.lesson.lessonId, unitId: button.dataset.unitId, result });
-    $$('.segmented button', $('#ctBox')).forEach(x => x.classList.toggle('active', x === button));
-    toast(result === '×' ? 'CT×を登録し、特訓部屋対象にしました。' : `CT ${result} を登録しました。`);
-  }
-
-  async function finishLesson() {
-    const unitIds = $$('[data-learned-unit]:checked').map(x => x.value);
-    if (!unitIds.length) return toast('今回進んだ単元を選択してください。');
-    const homeworkTypes = $$('[data-homework-type]:checked').map(x => x.value);
-    const result = await api('saveLesson', { token: state.token, lessonId: state.lesson.lessonId, unitIds, homeworkTypes, otherHomework: $('#otherHomework').value });
-    const comment = $('#lessonComment').value.trim();
-    if (comment) await api('saveComment', { token: state.token, lessonId: state.lesson.lessonId, comment });
-    toast(`${result.unitCount}単元・宿題${result.homeworkCount}件を保存しました。`);
-    await openStudent(state.activeStudentId, state.lesson.subject);
-  }
-
-  async function renderAdmin() {
-    state.role = 'admin';
-    state.adminRows = await api('todayOverview', { token: state.token, allStudents: state.adminAll });
-    workspace.innerHTML = head('本日の速報一覧', `${state.adminAll ? '全生徒' : '本日授業予定'}・日本時間`, `<button class="secondary" data-action="admin-settings">管理設定</button><button class="ghost" data-action="back-staff">講師画面</button>`) + `<section class="panel"><div class="toolbar"><input id="adminFilter" placeholder="生徒名・ID・学校・担当講師"><select id="adminClass"><option value="">全教室</option>${[...new Set(state.adminRows.map(x => x.classroom))].filter(Boolean).map(x => `<option>${esc(x)}</option>`).join('')}</select><select id="adminGrade"><option value="">全学年</option><option>中1</option><option>中2</option><option>中3</option></select><select id="adminSchool"><option value="">全学校</option>${[...new Set(state.adminRows.map(x => x.school))].filter(Boolean).sort().map(x => `<option>${esc(x)}</option>`).join('')}</select><select id="adminSubject"><option value="">全教科</option>${SUBJECTS.map(x => `<option>${esc(x)}</option>`).join('')}</select><select id="adminStaff"><option value="">全担当講師</option>${[...new Set(state.adminRows.map(x => x.assignedStaff))].filter(x => x && x !== '未決定').sort().map(x => `<option>${esc(x)}</option>`).join('')}</select><select id="adminCt"><option value="">CTすべて</option><option>◎</option><option>〇</option><option>×</option></select><select id="adminHw"><option value="">宿題すべて</option><option value="open">未完了あり</option><option value="done">すべて確認済み</option></select><select id="adminTraining"><option value="">特訓すべて</option><option value="open">未対応あり</option></select><button class="secondary" data-action="toggle-all">${state.adminAll ? '本日予定のみ' : '全生徒表示'}</button></div><div id="overviewWrap"></div></section>`;
-    filterAdmin();
-    showWorkspace();
-  }
-
-  function filterAdmin() {
-    const query = ($('#adminFilter')?.value || '').normalize('NFKC').replace(/\s/g,'').toLowerCase();
-    const classroom = $('#adminClass')?.value || '';
-    const grade = $('#adminGrade')?.value || '';
-    const school = $('#adminSchool')?.value || '';
-    const subject = $('#adminSubject')?.value || '';
-    const staff = $('#adminStaff')?.value || '';
-    const ct = $('#adminCt')?.value || '';
-    const hw = $('#adminHw')?.value || '';
-    const training = $('#adminTraining')?.value || '';
-    const rows = state.adminRows.filter(r => {
-      const hay = [r.name,r.id,r.school,r.assignedStaff,(r.plannedSubjects||[]).join('')].join('').normalize('NFKC').replace(/\s/g,'').toLowerCase();
-      return (!query || hay.includes(query)) && (!classroom || r.classroom === classroom) && (!grade || r.grade === grade) && (!school || r.school === school) && (!subject || (r.plannedSubjects || []).includes(subject) || (r.actualSubjects || []).includes(subject)) && (!staff || r.assignedStaff === staff) && (!ct || r.ctResult === ct) && (!hw || (hw === 'open' ? r.homework.checked < r.homework.total : r.homework.checked === r.homework.total)) && (!training || (training === 'open' && r.trainingStatus && r.trainingStatus !== '完了'));
+async function api(action, payload = {}, { silent = false } = {}) {
+  if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
+  if (!silent) status("読み込み中…");
+  try {
+    const response = await fetch(CONFIG.apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload }),
+      redirect: "follow",
+      signal: controller.signal,
     });
-    $('#overviewWrap').innerHTML = rows.length ? `<div class="table-wrap"><table class="overview-table"><thead><tr><th>生徒</th><th>予定 / 実施</th><th>担当</th><th>残り</th><th>CT</th><th>宿題</th><th>学校比較</th><th>特訓</th><th>警告</th></tr></thead><tbody>${rows.map(r => {
-      const alerts = [r.ctResult === '×' && 'CT×', r.trainingStatus && r.trainingStatus !== '完了' && '特訓未対応', r.homework.checked < r.homework.total && '宿題未完了', r.missingRecord && '記録未入力'].filter(Boolean);
-      return `<tr class="${alerts.length ? 'alert-row' : ''}" data-admin-student="${esc(r.id)}"><td><button class="ghost" data-admin-student="${esc(r.id)}">${r.unreadComments ? '<span class="unread-dot"></span> ' : ''}${esc(r.name)}</button><small>${esc(r.id)}・${esc(r.classroom)}・${esc(r.grade)}</small></td><td>${esc((r.plannedSubjects||[]).join('・')||'―')} / ${esc((r.actualSubjects||[]).join('・')||'未入力')}</td><td>${esc(r.assignedStaff)}</td><td>${esc(r.remaining ?? '未設定')}</td><td>${esc(r.ctResult || '―')}</td><td>${esc(r.homework.checked)}/${esc(r.homework.total)}</td><td>${status(r.comparison, r.comparison === '遅れ' ? 'danger' : r.comparison === '先行' ? 'ok' : 'muted')}</td><td>${esc(r.trainingStatus || '―')}</td><td>${alerts.map(x => status(x, 'danger')).join(' ')}</td></tr>`;
-    }).join('')}</tbody></table></div>` : empty('条件に合う生徒はいません。');
+    const result = await response.json();
+    if (!response.ok || result.ok === false) throw new Error(result.message || "処理に失敗しました。");
+    status("");
+    return result;
+  } catch (error) {
+    status("");
+    if (error.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
+}
 
-  async function openAdminStudent(studentId) {
-    const d = await api('adminStudentDetail', { token: state.token, studentId });
-    state.detail = d;
-    const t = d.targets || {};
-    workspace.innerHTML = head(d.student.name, `${d.student.id}・${d.student.classroom}・${d.student.grade}・${d.student.school}`, '<button class="ghost" data-action="admin-home">一覧へ戻る</button>') + testCard(d.test) + `<section class="grid two"><div class="panel"><h2>5教科目標点</h2><div class="grid three">${[['国語',t.japanese],['社会',t.social],['数学',t.math],['理科',t.science],['英語',t.english]].map(x => metric(x[0], x[1] === '' || x[1] == null ? '未設定' : `${x[1]}点`)).join('')}</div></div><div class="panel"><h2>指導上の注意事項</h2>${d.note ? `<p>${esc(d.note.text)}</p><small>${esc(d.note.author)}・${esc(d.note.updatedAt)}・第${esc(d.note.version)}版</small>` : empty('注意事項はありません。')}<form id="noteForm" class="field"><textarea name="text" rows="3" placeholder="新しい内容を入力"></textarea><button class="primary" type="submit">新しい版として保存</button></form></div></section><section class="panel"><h2>成績履歴</h2>${scoresHtml(d.scores)}</section><section class="panel"><h2>宿題</h2>${homeworkHtml(d.homework, 'readonly')}</section><section class="grid two"><div class="panel"><h2>授業履歴</h2>${simpleHistory(d.lessons, ['授業日','教科','担当講師名','状態'])}</div><div class="panel"><h2>学校進度履歴</h2>${simpleHistory(d.schoolProgress, ['記録日','教科','単元ID','担当講師名'])}</div><div class="panel"><h2>CT履歴</h2>${simpleHistory(d.ct, ['実施日','教科','単元ID','結果','担当講師名'])}</div><div class="panel"><h2>特訓部屋</h2>${simpleHistory(d.training, ['教科','単元ID','状態','実施予定日','実施日'])}</div></section><section class="panel"><h2>講師コメント</h2>${d.comments?.length ? `<div class="history-list">${d.comments.map(c => `<article class="metric"><p>${esc(c['コメント'])}</p><small>${esc(c['講師名'])}・${esc(c['作成日時'])}</small><button class="secondary" data-read-comment="${esc(c['コメントID'])}">確認済みにする</button></article>`).join('')}</div>` : empty('コメントはありません。')}</section>`;
-    showWorkspace();
+function status(message, isError = false) {
+  const el = $("globalStatus");
+  if (!message) return el.classList.add("hidden");
+  el.textContent = message;
+  el.classList.remove("hidden");
+  el.style.background = isError ? "#fee2e2" : "#edf7ff";
+  el.style.color = isError ? "#991b1b" : "#1d4f7a";
+}
+
+function loading() {
+  $("content").replaceChildren($("loadingTemplate").content.cloneNode(true));
+}
+
+function showError(error, retry) {
+  $("content").innerHTML = `<div class="card dangerCard"><h2>読み込めませんでした</h2><p>${esc(error.message || error)}</p>${retry ? '<button id="retryButton" class="primaryBtn">再試行</button>' : ""}</div>`;
+  if (retry) $("retryButton").onclick = retry;
+}
+
+function persistSession() {
+  const data = JSON.stringify(state.session);
+  sessionStorage.removeItem(KEYS.session);
+  localStorage.removeItem(KEYS.local);
+  if (state.device === "personal" && $("rememberLogin")?.checked) localStorage.setItem(KEYS.local, data);
+  else sessionStorage.setItem(KEYS.session, data);
+  sessionStorage.setItem(KEYS.device, state.device);
+}
+
+function clearSessions() {
+  localStorage.removeItem(KEYS.local);
+  sessionStorage.removeItem(KEYS.session);
+  localStorage.removeItem("forestaStudentAuth");
+  localStorage.removeItem("forestaTeacherAuth");
+  sessionStorage.removeItem("forestaStudentAuth");
+  sessionStorage.removeItem("forestaTeacherAuth");
+  state.session = null;
+  state.adminToken = "";
+}
+
+function navItems() {
+  if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];
+  if (state.role === "teacher") return [["search", "生徒を選ぶ"], ["today", "本日の授業"], ["selected", "選択中の生徒"]];
+  return [["admin", "本日の速報"], ["ranges", "学校別テスト範囲"], ["training", "特訓部屋"], ["students", "全生徒"]];
+}
+
+function renderShell() {
+  $("loginView").classList.add("hidden");
+  $("workspace").classList.remove("hidden");
+  $("userName").textContent = state.session?.name || "—";
+  $("userMeta").textContent = `${state.role === "student" ? "生徒" : state.role === "teacher" ? "講師" : "管理者"} / ${state.session?.campus || state.session?.grade || ""}`;
+  $("userInitial").textContent = (state.session?.name || "F").slice(0, 1);
+  $("navItems").innerHTML = navItems().map(([id, label]) => `<button class="navButton ${state.activeView === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("");
+  $("navItems").querySelectorAll("button").forEach((button) => button.onclick = () => openView(button.dataset.view));
+}
+
+async function openView(view) {
+  state.activeView = view;
+  renderShell();
+  loading();
+  try {
+    if (state.role === "student") await renderStudent(view);
+    else if (state.role === "teacher") await renderTeacher(view);
+    else await renderAdmin(view);
+  } catch (error) {
+    showError(error, () => openView(view));
   }
+}
 
-  function simpleHistory(rows = [], keys = []) {
-    if (!rows.length) return empty('履歴はありません。');
-    return `<div class="history-list">${rows.slice().reverse().map(r => `<div class="metric">${keys.map(k => `<small>${esc(k)}</small><b style="font-size:14px">${esc(r[k] ?? '')}</b>`).join('')}</div>`).join('')}</div>`;
-  }
+function metricCard(title, value, sub = "", tone = "") {
+  return `<article class="card span4 ${tone}"><p class="cardTitle">${esc(title)}</p><div class="bigValue">${esc(value)}</div>${sub ? `<p class="muted">${esc(sub)}</p>` : ""}</article>`;
+}
 
-  async function requireAdminSettings() {
-    if (!state.adminVerified) {
-      $('#reauthId').value = state.user.id || '';
-      $('#reauthPassword').value = '';
-      $('#reauthMessage').textContent = '';
-      $('#reauthDialog').showModal();
-      return;
+async function renderStudent(view) {
+  const data = await api("getStudentDashboard");
+  state.dashboard = data;
+  if (view === "homework") return renderHomeworkPage(data);
+  if (view === "scores") return renderScoresPage(data);
+  const next = data.nextTest;
+  const p = data.progress?.[0] || {};
+  $("content").innerHTML = `
+    <header class="pageHead"><div><h1>${esc(data.student.name)}さんの進捗</h1><p>${esc(data.student.school || "学校未登録")} / ${esc(data.student.grade)}</p></div><div class="actionRow">${TRACKED_SUBJECTS.map((s) => `<button class="secondaryBtn progressionButton" data-subject="${s}">${s}の進行表を見る</button>`).join("")}</div></header>
+    <section class="cardGrid">
+      ${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)}` : "学校別日程が未登録です", next ? "" : "alert")}
+      ${metricCard("テストまで", next ? `${next.daysUntil}日` : "未設定", next ? "日本時間で計算" : "", next?.daysUntil <= 14 ? "alert" : "")}
+      ${metricCard("学校との比較", p.comparison || "未設定", p.subject || "英語・数学から選択", p.comparison === "学校より先" ? "" : "alert")}
+      <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
+      <article class="card span6"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
+      <article class="card span6"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
+    </section>`;
+  $("content").querySelectorAll(".progressionButton").forEach((button) => button.onclick = () => openProgress({ subject: button.dataset.subject, mode: "view" }));
+  bindTargetForm(next?.testId);
+  bindHomeworkChecks();
+}
+
+function homeworkHtml(items, mode = "readonly") {
+  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return items.map((item) => `<div class="homeworkItem ${item.teacherChecked ? "complete" : ""} ${item.overdue && !item.teacherChecked ? "overdue" : ""}">
+    <input class="${mode === "student" ? "homeworkCheck" : mode === "teacher" ? "teacherHomeworkCheck" : ""}" type="checkbox" data-id="${esc(item.homeworkId)}" ${mode === "teacher" ? (item.teacherChecked ? "checked" : "") : (item.studentChecked ? "checked" : "")} ${mode === "readonly" || (mode === "student" && item.teacherChecked) ? "disabled" : ""}>
+    <div><strong>${esc(item.unitNumber || "")}</strong> ${esc(item.contentText || item.contentType)}<br><small>${item.teacherChecked ? `講師確認済み ${fmtDateTime(item.teacherCheckedAt)}` : item.studentChecked ? `確認待ち・${fmtDateTime(item.studentCheckedAt)}　素晴らしい！` : "未完了"}</small></div>
+    <span class="badge ${item.overdue && !item.teacherChecked ? "bad" : ""}">${fmtDate(item.recommendedDueDate)}</span>
+  </div>`).join("");
+}
+
+function renderHomeworkPage(data) {
+  const summary = homeworkSummary(data.homework || []);
+  $("content").innerHTML = `<header class="pageHead"><div><h1>次回までの宿題</h1><p>宿題は2日以内に終わらせよう！</p></div></header><section class="cardGrid">${metricCard("自己申告", `${summary.studentChecked}/${summary.total}`)}${metricCard("講師確認", `${summary.teacherChecked}/${summary.total}`)}<article class="card span12"><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article></section>`;
+  bindHomeworkChecks();
+}
+
+function bindHomeworkChecks() {
+  $("content").querySelectorAll(".homeworkCheck:not(:disabled)").forEach((input) => input.onchange = async () => {
+    input.disabled = true;
+    try { await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: input.checked }); await openView(state.activeView); }
+    catch (error) { input.checked = !input.checked; input.disabled = false; status(error.message, true); }
+  });
+}
+
+function bindTeacherHomeworkChecks() {
+  $("content").querySelectorAll(".teacherHomeworkCheck").forEach((input) => input.onchange = async () => {
+    input.disabled = true;
+    try {
+      await api("teacherCheckHomework", { homeworkId: input.dataset.id, checked: input.checked });
+      await openView("selected");
+    } catch (error) {
+      input.checked = !input.checked;
+      input.disabled = false;
+      status(error.message, true);
     }
-    await renderAdminSettings();
-  }
+  });
+}
 
-  async function renderAdminSettings() {
-    state.adminSettings = await api('adminSettings', { token: state.token });
-    const s = state.adminSettings;
-    workspace.innerHTML = head('管理設定', '変更は専用保存シートへ記録されます。', '<button class="ghost" data-action="admin-home">速報一覧</button>') + `<nav class="admin-nav"><button class="secondary" data-setting-view="textbook">学校別英語教科書</button><button class="secondary" data-setting-view="range">テスト範囲</button><button class="secondary" data-setting-view="training">特訓部屋</button><button class="secondary" data-setting-view="units">正式進行表</button></nav><div id="settingsArea"></div>`;
-    renderSettingView('textbook');
-    showWorkspace();
-  }
+function targetForm(targets, testId) {
+  if (!testId) return '<div class="emptyState">次回テスト未登録のため入力できません。</div>';
+  return `<form id="targetForm"><div class="targetGrid">${SUBJECTS.map((subject) => `<label>${subject}<input name="${subject}" type="number" min="0" max="100" inputmode="numeric" value="${esc(targets[subject] ?? "")}"></label>`).join("")}</div><button class="primaryBtn" type="submit" style="margin-top:12px">目標点を保存</button></form>`;
+}
 
-  function renderSettingView(view) {
-    const s = state.adminSettings;
-    if (view === 'textbook') {
-      const latest = Object.fromEntries((s.schoolBooks || []).map(x => [x['学校名正規化'], x['英語教科書']]));
-      $('#settingsArea').innerHTML = `<section class="panel"><h2>学校別英語教科書</h2><p>学校ごとに正式な英語進行表を選択してください。</p><div class="history-list">${s.schools.map(school => `<form class="textbookForm assignment-grid"><input type="hidden" name="school" value="${esc(school)}"><b>${esc(school)}</b><select name="textbook" required><option value="">選択してください</option>${s.textbooks.map(x => `<option ${latest[school] === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select><button class="primary" type="submit">保存</button></form>`).join('')}</div></section>`;
-    } else if (view === 'training') {
-      $('#settingsArea').innerHTML = `<section class="panel"><div class="toolbar"><h2>未完了の特訓部屋</h2><a class="secondary" href="${esc(s.messageLink)}" target="_blank" rel="noopener">STEP配信システムで保護者へ連絡</a></div>${s.trainings.length ? `<div class="history-list">${s.trainings.map(t => `<form class="trainingForm panel"><input type="hidden" name="trainingId" value="${esc(t['対応ID'])}"><div class="assignment-grid"><label class="field">生徒ID<input value="${esc(t['生徒ID'])}" disabled></label><label class="field">教科<input value="${esc(t['教科'])}" disabled></label><label class="field">状態<select name="status"><option>未対応</option><option>実施日決定</option><option>完了</option></select></label><label class="field">予定日<input type="date" name="plannedDate"></label><label class="field">実施日<input type="date" name="doneDate"></label><label class="field">保護者連絡<select name="contactStatus"><option>未連絡</option><option>連絡済み</option></select></label></div><label class="field">備考<textarea name="note"></textarea></label><button class="primary" type="submit">更新</button></form>`).join('')}</div>` : empty('未完了の特訓部屋対象はいません。')}</section>`;
-    } else if (view === 'range') {
-      $('#settingsArea').innerHTML = `<section class="panel"><h2>学校別テスト範囲</h2><p>まず速報一覧から対象生徒を開き、次回テストと進行表を確認してください。範囲設定は学校・学年・教科・テストID単位で保存されます。</p><form id="rangeLookup" class="assignment-grid"><label class="field">対象生徒ID<input name="studentId" required></label><label class="field">教科<select name="subject"><option>英語</option><option>数学</option></select></label><button class="primary" type="submit">進行表を開く</button></form><div id="rangeEditor"></div></section>`;
-    } else {
-      $('#settingsArea').innerHTML = `<section class="panel"><h2>正式進行表の再読込</h2><p>正式な数学標準版と、英語6教科書版の中1〜中3進行表を読み直します。</p><button class="primary" data-action="refresh-units">正式進行表を再読込</button><div id="unitRefreshResult"></div></section>`;
-    }
-  }
-
-  async function openRangeEditor(form) {
+function bindTargetForm(testId) {
+  const form = $("targetForm");
+  if (!form) return;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
     const values = Object.fromEntries(new FormData(form));
-    const d = await api('studentDetail', { token: state.token, studentId: values.studentId, subject: values.subject });
-    const p = d.progress.find(x => x.subject === values.subject);
-    if (!d.test) return $('#rangeEditor').innerHTML = empty('次回テスト未登録のため設定できません。');
-    const units = p?.units || [];
-    $('#rangeEditor').innerHTML = `<form id="rangeForm" class="panel"><input type="hidden" name="studentId" value="${esc(d.student.id)}"><input type="hidden" name="school" value="${esc(d.student.school)}"><input type="hidden" name="grade" value="${esc(d.student.grade)}"><input type="hidden" name="subject" value="${esc(values.subject)}"><input type="hidden" name="testId" value="${esc(d.test.id)}"><div class="toolbar"><h3>${esc(d.student.school)}・${esc(d.student.grade)}・${esc(values.subject)}・${esc(d.test.name)}</h3><select name="kind"><option value="predicted">予想範囲</option><option value="confirmed">決定版</option></select><button type="button" class="ghost" data-action="select-range-all">全選択</button><button type="button" class="ghost" data-action="select-range-none">解除</button></div><div class="unit-list">${units.map(u => unitRowHtml(u, true)).join('')}</div><button class="primary" type="submit">選択範囲を保存</button></form>`;
+    try { await api("saveTargets", { testId, values }); status("目標点を保存しました。"); }
+    catch (error) { status(error.message, true); }
+  };
+}
+
+function renderScoresPage(data) {
+  const next = data.nextTest;
+  $("content").innerHTML = `<header class="pageHead"><div><h1>目標点・定期テスト履歴</h1><p>目標点はテストごとに保存されます。</p></div><a class="secondaryBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid"><article class="card span12"><p class="cardTitle">${esc(next?.name || "次回テスト未登録")}の目標点</p>${targetForm(data.targets || {}, next?.testId)}</article><article class="card span12"><p class="cardTitle">成績履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th>${SUBJECTS.map((s) => `<th>${s}</th>`).join("")}<th>5科</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.jpn)}</td><td>${esc(s.math)}</td><td>${esc(s.eng)}</td><td>${esc(s.sci)}</td><td>${esc(s.soc)}</td><td>${esc(s.total5)}</td></tr>`).join("") || '<tr><td colspan="8">成績履歴はありません。</td></tr>'}</tbody></table></div></article></section>`;
+  bindTargetForm(next?.testId);
+}
+
+async function renderTeacher(view) {
+  if (view === "today") return renderToday();
+  if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
+  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・教室・学年・学校名から部分一致で検索できます。</p></div></header><article class="card"><div class="formGrid"><label class="span8"><span>検索</span><input id="studentSearch" class="field" placeholder="例：南城 中2 / 生徒名 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
+  $("searchButton").onclick = runStudentSearch;
+  $("studentSearch").onkeydown = (event) => { if (event.key === "Enter") runStudentSearch(); };
+  bindSelectedTabs();
+}
+
+async function runStudentSearch() {
+  const results = $("searchResults");
+  results.innerHTML = '<div class="loadingCard"><span class="spinner"></span></div>';
+  try {
+    const data = await api("searchStudents", { query: $("studentSearch").value, campus: $("campusFilter").value, grade: $("gradeFilter").value }, { silent: true });
+    results.innerHTML = (data.students || []).map((student) => `<button class="searchItem" data-id="${esc(student.studentId)}"><strong>${esc(student.name)}</strong> <span class="badge">${esc(student.studentId)}</span><br><small>${esc(student.campus)} / ${esc(student.grade)} / ${esc(student.school || "学校未登録")}</small></button>`).join("") || '<div class="emptyState">該当する在籍生徒はいません。</div>';
+    results.querySelectorAll("button").forEach((button) => button.onclick = () => selectStudent(data.students.find((s) => String(s.studentId) === button.dataset.id)));
+  } catch (error) { results.innerHTML = `<div class="emptyState bad">${esc(error.message)}</div>`; }
+}
+
+function selectStudent(student) {
+  if (!state.selectedStudents.some((row) => String(row.studentId) === String(student.studentId))) {
+    if (state.selectedStudents.length >= 2) state.selectedStudents.shift();
+    state.selectedStudents.push(student);
   }
+  state.activeStudentId = String(student.studentId);
+  state.activeView = "selected";
+  openView("selected");
+}
 
-  function showWorkspace() { entry.classList.add('hidden'); workspace.classList.remove('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-  function showEntry() { workspace.classList.add('hidden'); entry.classList.remove('hidden'); }
+function selectedTabsHtml() {
+  if (!state.selectedStudents.length) return "";
+  return `<div class="studentTabs">${state.selectedStudents.map((student) => `<button class="studentTab ${String(student.studentId) === state.activeStudentId ? "active" : ""}" data-id="${esc(student.studentId)}">${esc(student.name)}</button>`).join("")}</div>`;
+}
 
-  async function logout() {
-    try { if (state.token) await api('logout', { token: state.token }, true); } catch (_) { /* local logout still proceeds */ }
-    clearSession(state.device === 'shared');
-    Object.assign(state, { token: '', role: '', user: null, tabs: [], activeStudentId: '', detail: null, lesson: null, adminVerified: false });
-    showEntry();
-    $('#loginForm').reset();
-    toast('ログアウトしました。');
+function bindSelectedTabs() {
+  $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => { state.activeStudentId = button.dataset.id; openView("selected"); });
+}
+
+async function renderTeacherStudent(studentId) {
+  const data = await api("getStudentDashboard", { studentId });
+  state.dashboard = data;
+  const next = data.nextTest;
+  const summary = homeworkSummary(data.homework || []);
+  const orderedSubjects = [...new Set([...(data.student.subjects || []), ...SUBJECTS])];
+  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow"><select id="lessonSubject" class="field">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><select id="lessonTeacher" class="field" aria-label="本日の担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select><button id="viewProgress" class="secondaryBtn">進行表を見る</button><button id="inputLesson" class="primaryBtn">本日の授業を入力</button></div><p class="muted">受講科目を先頭に表示します。正式進行表がない科目は「進行表未登録」です。</p></article><article class="card span12"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6"><p class="cardTitle">前回宿題</p><p class="muted">生徒自己申告 ${summary.studentChecked}/${summary.total}　講師確認 ${summary.teacherChecked}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">英語・数学の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>英語</th><th>数学</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.eng)}</td><td>${esc(s.math)}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
+  bindSelectedTabs();
+  $("viewProgress").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "view", studentId });
+  $("inputLesson").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "lesson", studentId, teacherId: $("lessonTeacher").value });
+  $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
+  $("saveComment").onclick = async () => { const text = $("teacherComment").value.trim(); if (!text) return; try { await api("saveComment", { studentId, subject: $("lessonSubject").value, text }); $("teacherComment").value = ""; status("コメントを保存しました。"); } catch (error) { status(error.message, true); } };
+  bindTeacherHomeworkChecks();
+}
+
+async function renderToday() {
+  const data = await api("getTeacherToday");
+  $("content").innerHTML = `<header class="pageHead"><div><h1>本日の授業</h1><p>日本時間の時間割と在籍判定を反映しています。</p></div></header><div class="card"><div class="searchResults">${(data.students || []).map((s) => `<button class="searchItem" data-id="${esc(s.studentId)}"><strong>${esc(s.name)}</strong> ${esc(s.subjects.join("・"))}<br><small>${esc(s.campus)} / ${esc(s.grade)} / ${esc(s.school)}</small></button>`).join("") || '<div class="emptyState">本日の予定生徒はいません。</div>'}</div></div>`;
+  $("content").querySelectorAll(".searchItem").forEach((button) => button.onclick = () => selectStudent(data.students.find((s) => String(s.studentId) === button.dataset.id)));
+}
+
+async function renderAdmin(view) {
+  if (view === "ranges") return renderRangeSettings();
+  const data = await api(view === "training" ? "getTrainingRoom" : view === "students" ? "getAdminStudents" : "getAdminDashboard");
+  if (view === "training") return renderTraining(data);
+  const rows = data.students || [];
+  const values = (key) => [...new Set(rows.map((s) => s[key]).filter(Boolean))].sort();
+  $("content").innerHTML = `<header class="pageHead"><div><h1>${view === "students" ? "全在籍生徒" : "本日の速報"}</h1><p>B列が1または0の生徒だけを表示しています。</p></div><div class="actionRow"><button id="refreshSubjects" class="ghostBtn">受講科目を更新</button></div></header><article class="card" style="margin-bottom:14px"><div class="filterRow"><select class="field adminFilter" data-key="campus"><option value="">全教室</option>${values("campus").map((v) => `<option>${esc(v)}</option>`).join("")}</select><select class="field adminFilter" data-key="grade"><option value="">全学年</option>${values("grade").map((v) => `<option>${esc(v)}</option>`).join("")}</select><select class="field adminFilter" data-key="school"><option value="">全学校</option>${values("school").map((v) => `<option>${esc(v)}</option>`).join("")}</select><select class="field adminFilter" data-key="subject"><option value="">全教科</option>${SUBJECTS.map((v) => `<option>${v}</option>`).join("")}</select><select class="field adminFilter" data-key="ct"><option value="">全CT</option><option>◎</option><option>〇</option><option>×</option></select><select class="field adminFilter" data-key="homework"><option value="">全宿題</option><option value="完了">完了</option><option value="未完了">未完了</option></select><select class="field adminFilter" data-key="training"><option value="">全特訓状況</option><option>未対応</option><option>実施日決定</option><option>完了</option></select></div></article><div class="card"><div class="tableWrap"><table><thead><tr><th>生徒</th><th>ID</th><th>教室</th><th>学年</th><th>学校</th><th>予定科目</th><th>担当講師</th><th>入力科目</th><th>学習単元</th><th>残り</th><th>残り回数</th><th>必要ペース</th><th>比較</th><th>CT</th><th>特訓</th><th>宿題</th><th>アラート</th><th>更新</th></tr></thead><tbody>${rows.map((s) => `<tr class="adminStudentRow" data-student-id="${esc(s.studentId)}" data-campus="${esc(s.campus)}" data-grade="${esc(s.grade)}" data-school="${esc(s.school)}" data-subject="${esc([...(s.plannedSubjects || []), ...(s.recordedSubjects || [])].join("・"))}" data-ct="${esc(s.ctResult || "")}" data-homework="${s.homeworkTotal > 0 && s.homeworkConfirmed === s.homeworkTotal ? "完了" : "未完了"}" data-training="${esc(s.trainingStatus || "")}"><td><button class="textLink openAdminStudent" data-id="${esc(s.studentId)}">${esc(s.name)}</button></td><td>${esc(s.studentId)}</td><td>${esc(s.campus)}</td><td>${esc(s.grade)}</td><td>${esc(s.school || "学校未登録")}</td><td>${esc((s.plannedSubjects || []).join("・"))}</td><td>${esc((s.actualTeachers || []).join("・") || "未入力")}</td><td>${esc((s.recordedSubjects || []).join("・"))}</td><td>${esc(s.learnedToday ?? 0)}</td><td>${esc(s.remaining ?? "未設定")}</td><td>${esc(s.remainingLessons ?? "未設定")}</td><td>${s.requiredPerLesson == null ? "未設定" : `${esc(s.requiredPerLesson)}単元/回`}</td><td>${esc(s.comparison || "未設定")}</td><td>${esc(s.ctResult || "—")}</td><td>${esc(s.trainingStatus || "—")}</td><td>${esc(s.homeworkConfirmed ?? 0)}/${esc(s.homeworkTotal ?? 0)}</td><td>${(s.alerts || []).map((a) => `<span class="badge bad">${esc(a)}</span>`).join(" ")}</td><td>${fmtDateTime(s.updatedAt)}</td></tr>`).join("")}</tbody></table></div></div>`;
+  $("refreshSubjects").onclick = async () => { try { const r = await api("refreshSubjectCache"); status(`受講科目を${r.count}件更新しました。`); } catch (error) { status(error.message, true); } };
+  $("content").querySelectorAll(".adminFilter").forEach((select) => select.onchange = applyAdminFilters);
+  $("content").querySelectorAll(".openAdminStudent").forEach((button) => button.onclick = () => renderAdminStudent(button.dataset.id));
+}
+
+function applyAdminFilters() {
+  const filters = [...$("content").querySelectorAll(".adminFilter")].filter((x) => x.value);
+  $("content").querySelectorAll(".adminStudentRow").forEach((row) => { row.hidden = !filters.every((filter) => String(row.dataset[filter.dataset.key] || "").includes(filter.value)); });
+}
+
+async function renderAdminStudent(studentId) {
+  loading();
+  try {
+    const data = await api("getAdminStudentDetail", { studentId });
+    const s = data.student, summary = homeworkSummary(data.homework || []);
+    $("content").innerHTML = `<header class="pageHead"><div><button id="backAdmin" class="ghostBtn">← 一覧へ</button><h1>${esc(s.name)}・管理者詳細</h1><p>${esc(s.studentId)} / ${esc(s.campus)} / ${esc(s.grade)} / ${esc(s.school || "学校未登録")}</p></div><div class="actionRow">${TRACKED_SUBJECTS.map((subject) => `<button class="secondaryBtn adminProgress" data-subject="${subject}">${subject}の進行表</button>`).join("")}<a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></div></header><section class="cardGrid">${metricCard("次回テスト", data.nextTest?.name || "次回テスト未登録", data.nextTest ? `${fmtDate(data.nextTest.startDate)}〜${fmtDate(data.nextTest.endDate)}` : "", data.nextTest ? "" : "alert")}${metricCard("宿題", `${summary.teacherChecked}/${summary.total}`, `生徒自己申告 ${summary.studentChecked}/${summary.total}`)}<article class="card span12"><p class="cardTitle">5教科目標点</p><div class="targetGrid">${SUBJECTS.map((subject) => `<div><strong>${subject}</strong><br>${esc(data.targets?.[subject] ?? "未設定")}点</div>`).join("")}</div></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>残り回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((p) => `<tr><td>${esc(p.subject)}</td><td>${esc(p.schoolUnitName || "未設定")}</td><td>${esc(p.forestaUnitName || "未設定")}</td><td>${esc(p.comparison)}</td><td>${esc(p.remaining ?? "未設定")}</td><td>${esc(p.remainingLessons ?? "未設定")}</td><td>${p.requiredPerLesson == null ? "未設定" : `${esc(p.requiredPerLesson)}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6"><p class="cardTitle">指導上の注意事項</p><p>${esc(data.notes?.[0]?.text || "未登録")}</p><textarea id="adminNote" class="field" rows="3" placeholder="新しい注意事項"></textarea><button id="saveAdminNote" class="primaryBtn" style="margin-top:8px">履歴を残して更新</button><div class="historyList">${(data.notes || []).map((n) => `<p><span class="badge">版${esc(n.version)}</span> ${esc(n.text)}<br><small>${fmtDateTime(n.updatedAt)} ${esc(n.updatedBy)}</small></p>`).join("")}</div></article><article class="card span6"><p class="cardTitle">講師コメント</p>${(data.comments || []).map((c) => `<div class="commentItem"><p><strong>${esc(c.subject)}・${esc(c.teacherName)}</strong> ${fmtDateTime(c.date)}<br>${esc(c.text)}</p>${c.read ? '<span class="badge good">確認済み</span>' : `<button class="ghostBtn markRead" data-id="${esc(c.commentId)}">確認済みにする</button>`}</div>`).join("") || '<div class="emptyState">コメントはありません。</div>'}</article><article class="card span12"><p class="cardTitle">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th>${SUBJECTS.map((x) => `<th>${x}</th>`).join("")}<th>5科</th></tr></thead><tbody>${(data.scores || []).map((x) => `<tr><td>${esc(x.year)}</td><td>${esc(x.term)}</td><td>${esc(x.jpn)}</td><td>${esc(x.math)}</td><td>${esc(x.eng)}</td><td>${esc(x.sci)}</td><td>${esc(x.soc)}</td><td>${esc(x.total5)}</td></tr>`).join("") || '<tr><td colspan="8">履歴なし</td></tr>'}</tbody></table></div></article><article class="card span12"><p class="cardTitle">授業・単元・再学習履歴</p><div class="tableWrap"><table><thead><tr><th>日付</th><th>科目</th><th>担当</th><th>実施単元</th></tr></thead><tbody>${(data.lessons || []).map((lesson) => `<tr><td>${fmtDateTime(lesson.date)}</td><td>${esc(lesson.subject)}</td><td>${esc(lesson.teacherName)}</td><td>${lesson.units.map((u) => `${esc(u.unitNumber)} ${esc(u.unitName)}${u.relearned ? ' <span class="badge">再学習</span>' : ""}`).join("<br>")}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</tbody></table></div></article><article class="card span6"><p class="cardTitle">学校進度履歴</p>${(data.schoolHistory || []).map((x) => `<p>${fmtDate(x.date)} ${esc(x.subject)}・${esc(x.unitName)} <small>${esc(x.teacherName)}</small></p>`).join("") || "履歴なし"}</article><article class="card span6"><p class="cardTitle">CT・特訓部屋履歴</p>${(data.cts || []).map((x) => `<p>${fmtDate(x.date)} ${esc(x.subject)}・${esc(x.unitName)} <span class="badge ${x.result === "×" ? "bad" : "good"}">${esc(x.result)}</span> ${esc(x.trainingStatus || "")}</p>`).join("") || "履歴なし"}</article><article class="card span12"><p class="cardTitle">宿題チェック履歴</p><div class="homeworkList">${homeworkHtml(data.homework || [], "readonly")}</div></article></section>`;
+    $("backAdmin").onclick = () => openView(state.activeView === "students" ? "students" : "admin");
+    $("content").querySelectorAll(".adminProgress").forEach((button) => button.onclick = () => openProgress({ studentId, subject: button.dataset.subject, mode: "view" }));
+    $("saveAdminNote").onclick = async () => { const text = $("adminNote").value.trim(); if (!text) return; try { await api("saveNote", { studentId, text }); status("注意事項を履歴付きで更新しました。"); await renderAdminStudent(studentId); } catch (error) { status(error.message, true); } };
+    $("content").querySelectorAll(".markRead").forEach((button) => button.onclick = async () => { try { await api("markCommentRead", { commentId: button.dataset.id }); await renderAdminStudent(studentId); } catch (error) { status(error.message, true); } });
+  } catch (error) { showError(error, () => renderAdminStudent(studentId)); }
+}
+
+async function renderRangeSettings() {
+  const setup = await api("getRangeSetup");
+  const textbookBySchool = Object.fromEntries((setup.textbooks || []).map((row) => [row.school, row.textbook]));
+  const textbookOptions = ["ニュークラウン", "サンシャイン", "ニューホライズン", "ワンワールド", "ヒアウィゴー", "ブルースカイ"];
+  $("content").innerHTML = `<header class="pageHead"><div><h1>学校別テスト範囲</h1><p>生徒IDを使わず、学校→学年→科目→次回テストの順に設定します。</p></div></header><article class="card"><div class="formGrid"><label><span>1. 学校</span><select id="rangeSchool" class="field"><option value="">選択</option>${setup.schools.map((s) => `<option>${esc(s)}</option>`).join("")}</select></label><label><span>2. 学年</span><select id="rangeGrade" class="field"><option>中1</option><option>中2</option><option>中3</option></select></label><label><span>3. 科目</span><select id="rangeSubject" class="field"><option>英語</option><option>数学</option></select></label><label><span>4. 次回テスト</span><select id="rangeTest" class="field"><option value="">学校を選択</option></select></label><label><span>5. 範囲種別</span><select id="rangeType" class="field"><option value="予想">次回テスト範囲（予想）</option><option value="決定">次回テスト範囲（決定版）</option></select></label></div><div class="actionRow" style="margin-top:14px"><button id="openRangeEditor" class="primaryBtn">進行表・テスト範囲を設定する</button><span id="targetCount" class="badge">対象生徒 0名</span></div></article><article class="card" style="margin-top:14px"><p class="cardTitle">学校別英語教科書</p><div class="formGrid"><label><span>学校</span><select id="textbookSchool" class="field"><option value="">選択</option>${setup.schools.map((s) => `<option>${esc(s)}</option>`).join("")}</select></label><label><span>教科書</span><select id="textbookName" class="field">${textbookOptions.map((name) => `<option>${name}</option>`).join("")}</select></label></div><button id="saveTextbook" class="secondaryBtn" style="margin-top:12px">教科書設定を保存</button></article>`;
+  const school = $("rangeSchool"), test = $("rangeTest");
+  const update = async () => {
+    if (!school.value) return;
+    const data = await api("getRangeOptions", { school: school.value, grade: $("rangeGrade").value, subject: $("rangeSubject").value });
+    test.innerHTML = (data.tests || []).map((t) => `<option value="${esc(t.testId)}">${esc(t.name)} ${fmtDate(t.startDate)}〜${fmtDate(t.endDate)}</option>`).join("") || '<option value="">次回テスト未登録</option>';
+    $("targetCount").textContent = `対象生徒 ${data.targetCount || 0}名`;
+  };
+  [school, $("rangeGrade"), $("rangeSubject")].forEach((el) => el.onchange = update);
+  $("openRangeEditor").onclick = () => { if (!school.value || !test.value) return status("学校と次回テストを選択してください。", true); openProgress({ mode: "range", school: school.value, grade: $("rangeGrade").value, subject: $("rangeSubject").value, testId: test.value, rangeType: $("rangeType").value }); };
+  $("textbookSchool").onchange = () => { if (textbookBySchool[$("textbookSchool").value]) $("textbookName").value = textbookBySchool[$("textbookSchool").value]; };
+  $("saveTextbook").onclick = async () => { if (!$("textbookSchool").value) return status("学校を選択してください。", true); try { await api("saveSchoolTextbook", { school: $("textbookSchool").value, textbook: $("textbookName").value }); status("英語教科書設定を保存しました。"); } catch (error) { status(error.message, true); } };
+}
+
+function renderTraining(data) {
+  $("content").innerHTML = `<header class="pageHead"><div><h1>特訓部屋管理</h1><p>CTが×になった生徒の対応状況を更新できます。</p></div><a class="secondaryBtn" href="${CONFIG.messageCenterUrl}" target="_blank" rel="noopener">STEP配信システムで保護者へ連絡 ↗</a></header><div class="card"><div class="tableWrap"><table><thead><tr><th>生徒</th><th>教室</th><th>学校</th><th>学年</th><th>教科</th><th>CT単元</th><th>CT実施日</th><th>担当</th><th>状況</th><th>予定日</th><th>実施日</th><th>備考</th><th>保護者連絡</th><th>保存</th></tr></thead><tbody>${(data.items || []).map((x) => `<tr data-training-id="${esc(x.trainingId)}"><td>${esc(x.name)}</td><td>${esc(x.campus)}</td><td>${esc(x.school)}</td><td>${esc(x.grade)}</td><td>${esc(x.subject)}</td><td>${esc(x.unitName)}</td><td>${fmtDate(x.ctDate)}</td><td>${esc(x.teacherName)}</td><td><select class="field trainingStatus"><option ${x.status === "未対応" ? "selected" : ""}>未対応</option><option ${x.status === "実施日決定" ? "selected" : ""}>実施日決定</option><option ${x.status === "完了" ? "selected" : ""}>完了</option></select></td><td><input class="field trainingScheduled" type="date" value="${esc(dateInputValue(x.scheduledDate))}"></td><td><input class="field trainingActual" type="date" value="${esc(dateInputValue(x.actualDate))}"></td><td><textarea class="field trainingNote" rows="2">${esc(x.note)}</textarea></td><td><select class="field trainingGuardian"><option ${x.guardianContactStatus === "未連絡" ? "selected" : ""}>未連絡</option><option ${x.guardianContactStatus === "連絡済み" ? "selected" : ""}>連絡済み</option><option ${x.guardianContactStatus === "不要" ? "selected" : ""}>不要</option></select></td><td><button class="primaryBtn saveTraining">保存</button></td></tr>`).join("") || '<tr><td colspan="14">対象者はいません。</td></tr>'}</tbody></table></div></div>`;
+  $("content").querySelectorAll(".saveTraining").forEach((button) => button.onclick = async () => {
+    const row = button.closest("tr");
+    button.disabled = true;
+    try {
+      await api("updateTrainingRoom", { trainingId: row.dataset.trainingId, status: row.querySelector(".trainingStatus").value, scheduledDate: row.querySelector(".trainingScheduled").value, actualDate: row.querySelector(".trainingActual").value, note: row.querySelector(".trainingNote").value, guardianContactStatus: row.querySelector(".trainingGuardian").value });
+      status("特訓部屋の対応状況を保存しました。");
+    } catch (error) { status(error.message, true); }
+    finally { button.disabled = false; }
+  });
+}
+
+function dateInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+async function openProgress(options) {
+  showModal('<div class="loadingCard"><span class="spinner"></span><p>正式進行表を読み込み中です…</p></div>');
+  try {
+    const data = await api(options.mode === "range" ? "getRangeEditor" : "getProgression", options, { silent: true });
+    const editable = options.mode === "lesson" || options.mode === "range";
+    const selected = new Set(options.unitIds || data.selectedUnitIds || []);
+    const rows = (data.units || []).map((u) => {
+      const classes = [u.predictedOutside ? "predictedOutside" : "", u.decidedOutside ? "decidedOutside" : "", u.previous ? "previous" : "", u.schoolPosition ? "schoolPosition" : "", u.omittable ? "omittable" : ""].filter(Boolean).join(" ");
+      const effectiveOutside = data.summary?.rangeType === "決定" ? u.decidedOutside : data.summary?.rangeType === "予想" ? u.predictedOutside : false;
+      const rangeLocked = options.mode === "lesson" && state.dashboard?.student?.grade !== "中3" && effectiveOutside;
+      return `<label class="unitRow ${classes}"><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(u.chapter || "")}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}><span class="unitNumber">${esc(u.unitNumber)}</span><span class="unitName"><strong>${esc(u.unitName)}</strong><br><small>${esc(u.chapter || "")} ${u.difficulty ? ` / 難度 ${esc(u.difficulty)}` : ""}${rangeLocked ? " / 中1・中2は範囲外" : ""}</small></span><span class="unitMeta">${u.learned ? `<span class="badge good">学習済 ${fmtDate(u.learnedAt)}</span>` : ""}${u.relearnedAt ? `<span class="badge">再学習 ${fmtDate(u.relearnedAt)}</span>` : ""}${u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
+    }).join("");
+    const chapters = [...new Set((data.units || []).map((u) => u.chapter).filter(Boolean))];
+    $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "正式進行表全体")}</p><div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span><span><i style="background:var(--school)"></i>学校位置</span></div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">すべて選択</button><button id="clearAll" class="ghostBtn">すべて解除</button>${chapters.length ? `<select id="chapterSelect" class="field"><option value="">章を選択</option>${chapters.map((chapter) => `<option>${esc(chapter)}</option>`).join("")}</select><button id="selectChapter" class="ghostBtn">章ごとに選択</button>` : ""}<span id="selectedCount" class="badge">0単元</span>${options.mode === "lesson" ? '<button id="saveSchoolPosition" class="secondaryBtn">選択した1単元を学校位置に保存</button><button id="saveLesson" class="primaryBtn">今回進んだ単元を保存</button>' : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>'}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
+    const checks = [...$("modalBody").querySelectorAll(".unitCheck:not(:disabled)")];
+    const count = () => { const el = $("selectedCount"); if (el) el.textContent = `${checks.filter((c) => c.checked).length}単元`; };
+    checks.forEach((c) => c.onchange = count); count();
+    if ($("selectAll")) $("selectAll").onclick = () => { checks.forEach((c) => c.checked = true); count(); };
+    if ($("clearAll")) $("clearAll").onclick = () => { checks.forEach((c) => c.checked = false); count(); };
+    if ($("selectChapter")) $("selectChapter").onclick = () => { const chapter = $("chapterSelect").value; if (!chapter) return; checks.filter((c) => c.dataset.chapter === chapter).forEach((c) => c.checked = true); count(); };
+    if ($("saveRange")) $("saveRange").onclick = async () => { const unitIds = checks.filter((c) => c.checked).map((c) => c.value); if (!confirm(`${unitIds.length}単元を${options.rangeType}範囲として保存します。よろしいですか？`)) return; try { await api("saveRange", { ...options, unitIds }); closeModal(); status("学校別テスト範囲を保存しました。"); } catch (error) { status(error.message, true); } };
+    if ($("saveSchoolPosition")) $("saveSchoolPosition").onclick = async () => { const ids = checks.filter((c) => c.checked).map((c) => c.value); if (ids.length !== 1) return status("学校位置は1単元だけ選択してください。", true); try { await api("saveSchoolPosition", { studentId: options.studentId, subject: options.subject, unitId: ids[0] }); closeModal(); await openView("selected"); } catch (error) { status(error.message, true); } };
+    if ($("saveLesson")) $("saveLesson").onclick = () => {
+      const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
+      if (!unitIds.length) return status("今回進んだ単元を選択してください。", true);
+      openHomeworkSetup({ ...options, unitIds, idempotencyKey: options.idempotencyKey || crypto.randomUUID() });
+    };
+    $("modalBody").querySelectorAll(".ctButton").forEach((button) => button.onclick = () => openCtForm(options, button.dataset.unit));
+  } catch (error) {
+    $("modalBody").innerHTML = `<h2>進行表を読み込めませんでした</h2><p>${esc(error.message)}</p><button id="retryModal" class="primaryBtn">再試行</button>`;
+    $("retryModal").onclick = () => openProgress(options);
   }
+}
 
-  $$('.tab').forEach(tab => tab.addEventListener('click', () => {
-    state.loginType = tab.dataset.loginTab;
-    $$('.tab').forEach(x => x.classList.toggle('active', x === tab));
-    $('#loginTitle').textContent = state.loginType === 'student' ? '生徒ログイン' : '講師ログイン';
-    $('#idLabel').textContent = state.loginType === 'student' ? '生徒番号' : '講師ID';
-    $('#loginMessage').textContent = '';
-  }));
+function openHomeworkSetup(options) {
+  const defaults = DEFAULT_HOMEWORK[options.subject] || [];
+  if (!defaults.length) return saveLessonWithHomework(options, []);
+  showModal(`<h2>次回宿題を確認</h2><p>今回進んだ${options.unitIds.length}単元それぞれに作成します。不要な項目は外してください。</p><div class="homeworkList">${defaults.map((item, index) => `<label class="homeworkItem"><input class="homeworkPreset" type="checkbox" value="${esc(item)}" checked><span><strong>${esc(item)}</strong></span><span class="badge">初期選択</span></label>`).join("")}</div><div class="actionRow" style="margin-top:14px"><button id="showOtherHomework" class="ghostBtn" type="button">その他</button><input id="otherHomework" class="field hidden" maxlength="120" placeholder="必要な場合だけ入力"></div><div class="actionRow" style="margin-top:16px"><button id="backToProgress" class="ghostBtn" type="button">単元選択へ戻る</button><button id="confirmLesson" class="primaryBtn" type="button">授業と宿題を保存</button></div>`);
+  $("showOtherHomework").onclick = () => { $("otherHomework").classList.remove("hidden"); $("otherHomework").focus(); };
+  $("backToProgress").onclick = () => openProgress(options);
+  $("confirmLesson").onclick = () => {
+    const homeworkItems = [...$("modalBody").querySelectorAll(".homeworkPreset:checked")].map((input) => input.value);
+    const other = $("otherHomework").value.trim();
+    if (other) homeworkItems.push(`その他：${other}`);
+    saveLessonWithHomework(options, homeworkItems);
+  };
+}
 
-  $('#adminEntry').addEventListener('click', () => {
-    state.adminIntent = true;
-    $('.tab[data-login-tab="staff"]').click();
-    $('#loginTitle').textContent = '管理者ログイン';
-    $('#loginMessage').textContent = '講師IDでログイン後、設定時に再認証します。';
-  });
+async function saveLessonWithHomework(options, homeworkItems) {
+  const button = $("confirmLesson");
+  if (button) button.disabled = true;
+  try {
+    await api("saveLesson", { studentId: options.studentId, subject: options.subject, teacherId: options.teacherId, unitIds: options.unitIds, homeworkItems, idempotencyKey: options.idempotencyKey });
+    closeModal();
+    await openView("selected");
+  } catch (error) {
+    if (button) button.disabled = false;
+    status(error.message, true);
+  }
+}
 
-  $('#loginForm').addEventListener('submit', async event => {
-    event.preventDefault();
-    const device = new FormData(event.currentTarget).get('device');
-    try {
-      const data = await api(state.loginType === 'student' ? 'loginStudent' : 'loginStaff', { device, id: $('#loginId').value, password: $('#loginPassword').value });
-      Object.assign(state, { token: data.token, user: data.user, device, role: state.loginType });
-      saveSession();
-      $('#loginPassword').value = '';
-      if (state.loginType === 'student') await renderStudent(); else if (state.adminIntent) await renderAdmin(); else staffSearchScreen();
-    } catch (err) { $('#loginMessage').textContent = err.message; }
-  });
+function openCtForm(options, unitId) {
+  showModal(`<h2>CT結果を登録</h2><p>前回授業範囲から1単元だけ登録します。</p><div class="actionRow">${["◎", "〇", "×"].map((r) => `<button class="primaryBtn ctResult" data-result="${r}">${r}</button>`).join("")}</div><p class="muted">×は自動的に特訓部屋対象になります。試験中のメールは送信抑止されます。</p>`);
+  $("modalBody").querySelectorAll(".ctResult").forEach((button) => button.onclick = async () => { try { await api("saveCt", { studentId: options.studentId, subject: options.subject, unitId, result: button.dataset.result, idempotencyKey: crypto.randomUUID() }); closeModal(); status("CT結果を登録しました。"); } catch (error) { status(error.message, true); } });
+}
 
-  $('#reauthForm').addEventListener('submit', async event => {
-    event.preventDefault();
-    try {
-      await api('reauthAdmin', { token: state.token, id: $('#reauthId').value, password: $('#reauthPassword').value });
-      state.adminVerified = true;
-      $('#reauthDialog').close();
-      await renderAdminSettings();
-    } catch (err) { $('#reauthMessage').textContent = err.message; }
-  });
+function showModal(html) { $("modalBody").innerHTML = html; if (!$("modal").open) $("modal").showModal(); }
+function closeModal() { if ($("modal").open) $("modal").close(); }
 
-  app.addEventListener('submit', async event => {
-    try {
-      if (event.target.id === 'targetForm') { event.preventDefault(); const values = Object.fromEntries(new FormData(event.target)); state.detail.targets = await api('saveTargets', { token: state.token, testId: state.detail.test.id, targets: values }); return toast('目標点を保存しました。'); }
-      if (event.target.id === 'searchForm') { event.preventDefault(); return await searchStudents(event.target); }
-      if (event.target.id === 'assignmentForm') { event.preventDefault(); return await startLesson(event.target); }
-      if (event.target.id === 'noteForm') { event.preventDefault(); const text = new FormData(event.target).get('text'); await api('saveNote', { token: state.token, studentId: state.detail.student.id, text }); return await openAdminStudent(state.detail.student.id); }
-      if (event.target.classList.contains('textbookForm')) { event.preventDefault(); const v = Object.fromEntries(new FormData(event.target)); await api('saveTextbook', { token: state.token, ...v }); toast('英語教科書を保存しました。'); state.adminSettings = await api('adminSettings', { token: state.token }); return renderSettingView('textbook'); }
-      if (event.target.classList.contains('trainingForm')) { event.preventDefault(); const v = Object.fromEntries(new FormData(event.target)); await api('updateTraining', { token: state.token, ...v }); toast('特訓部屋の状態を更新しました。'); return await renderAdminSettings(); }
-      if (event.target.id === 'rangeLookup') { event.preventDefault(); return await openRangeEditor(event.target); }
-      if (event.target.id === 'rangeForm') { event.preventDefault(); const v = Object.fromEntries(new FormData(event.target)); const unitIds = $$('input[type="checkbox"]:checked', event.target).map(x => x.value); await api('saveTestRange', { token: state.token, ...v, unitIds }); return toast(`${v.kind === 'confirmed' ? '決定版' : '予想'}範囲を保存しました。`); }
-    } catch (err) { toast(err.message); }
-  });
+function openAdminReauth() {
+  if (!state.session || state.role !== "teacher") {
+    state.role = "teacher";
+    $("loginIdLabel").textContent = "講師ID";
+    $("loginMessage").textContent = "管理者ページは講師としてログイン後に開けます。";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  showModal(`<h2>管理者設定の再認証</h2><p>講師IDとパスワードをもう一度入力してください。</p><form id="adminReauthForm" class="loginForm"><label><span>講師ID</span><input name="code" value="${esc(state.session.loginId || "")}" required></label><label><span>パスワード</span><input name="password" type="password" required autocomplete="current-password"></label><button class="primaryBtn">管理者ページを開く</button><p id="reauthError" class="formMessage"></p></form>`);
+  $("adminReauthForm").onsubmit = async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { const result = await api("adminReauth", Object.fromEntries(form), { silent: true }); state.adminToken = result.adminToken; state.role = "admin"; state.activeView = "admin"; closeModal(); renderShell(); openView("admin"); } catch (error) { $("reauthError").textContent = error.message; } };
+}
 
-  app.addEventListener('change', async event => {
-    try {
-      if (event.target.dataset.homeworkId && event.target.dataset.homeworkMode === 'student') await api('markHomeworkStudent', { token: state.token, homeworkId: event.target.dataset.homeworkId, checked: event.target.checked });
-      if (event.target.dataset.homeworkId && event.target.dataset.homeworkMode === 'teacher') await api('markHomeworkTeacher', { token: state.token, homeworkId: event.target.dataset.homeworkId, checked: event.target.checked });
-      if (['adminFilter','adminClass','adminGrade','adminSchool','adminSubject','adminStaff','adminCt','adminHw','adminTraining'].includes(event.target.id)) filterAdmin();
-    } catch (err) { event.target.checked = !event.target.checked; toast(err.message); }
-  });
+async function login(event) {
+  event.preventDefault();
+  if (!state.device) return $("loginMessage").textContent = "端末の種類を選択してください。";
+  $("loginMessage").textContent = "確認中…";
+  try {
+    const result = await api(state.role === "student" ? "studentLogin" : "staffLogin", { loginId: $("loginId").value.trim(), password: $("loginPassword").value, deviceMode: state.device }, { silent: true });
+    state.session = result.session;
+    persistSession();
+    $("loginPassword").value = "";
+    state.activeView = state.role === "student" ? "home" : "search";
+    renderShell();
+    openView(state.activeView);
+  } catch (error) { $("loginMessage").textContent = "IDまたはパスワードを確認してください。"; }
+}
 
-  app.addEventListener('input', event => { if (event.target.id === 'adminFilter') filterAdmin(); });
+async function restore() {
+  const saved = localStorage.getItem(KEYS.local) || sessionStorage.getItem(KEYS.session);
+  if (!saved) return;
+  try {
+    const parsed = JSON.parse(saved);
+    state.session = parsed;
+    state.role = parsed.role;
+    state.device = parsed.deviceMode || sessionStorage.getItem(KEYS.device) || "personal";
+    const result = await api("resumeSession", {}, { silent: true });
+    state.session = { ...parsed, ...result.session };
+    state.activeView = state.role === "student" ? "home" : "search";
+    renderShell();
+    openView(state.activeView);
+  } catch { clearSessions(); }
+}
 
-  app.addEventListener('click', async event => {
-    const button = event.target.closest('button, [data-action]');
-    if (!button) return;
-    try {
-      if (button.dataset.openStudent) return await openStudent(button.dataset.openStudent);
-      if (button.dataset.switchStudent) return await openStudent(button.dataset.switchStudent);
-      if (button.dataset.schoolUnit) return await saveSchoolProgress(button.dataset.schoolUnit);
-      if (button.dataset.ctUnit) return chooseCt(button.dataset.ctUnit);
-      if (button.dataset.ctResult) return await saveCt(button);
-      if (button.dataset.adminStudent) return await openAdminStudent(button.dataset.adminStudent);
-      if (button.dataset.readComment) { await api('markCommentRead', { token: state.token, commentId: button.dataset.readComment }); button.disabled = true; button.textContent = '確認済み'; return; }
-      if (button.dataset.settingView) return renderSettingView(button.dataset.settingView);
-      const action = button.dataset.action;
-      if (action === 'logout') return await logout();
-      if (action === 'open-admin') return await renderAdmin();
-      if (action === 'back-staff') return staffSearchScreen();
-      if (action === 'finish-lesson') return await finishLesson();
-      if (action === 'toggle-all') { state.adminAll = !state.adminAll; return await renderAdmin(); }
-      if (action === 'admin-home') return await renderAdmin();
-      if (action === 'admin-settings') return await requireAdminSettings();
-      if (action === 'select-range-all') return $$('input[type="checkbox"]', $('#rangeForm')).forEach(x => x.checked = true);
-      if (action === 'select-range-none') return $$('input[type="checkbox"]', $('#rangeForm')).forEach(x => x.checked = false);
-      if (action === 'refresh-units') { const result = await api('refreshUnits', { token: state.token }); $('#unitRefreshResult').innerHTML = `<p>${status(`${result.total}単元を読込`, 'ok')}</p><pre>${esc(JSON.stringify(result.summary, null, 2))}</pre>`; }
-    } catch (err) { toast(err.message); }
-  });
+document.querySelectorAll(".roleTab").forEach((tab) => tab.onclick = () => {
+  document.querySelectorAll(".roleTab").forEach((item) => { item.classList.toggle("active", item === tab); item.setAttribute("aria-selected", item === tab ? "true" : "false"); });
+  state.role = tab.dataset.role;
+  $("loginIdLabel").textContent = state.role === "student" ? "生徒ID" : "講師ID";
+  $("loginId").inputMode = state.role === "student" ? "numeric" : "text";
+});
+document.querySelectorAll(".deviceChoice").forEach((button) => button.onclick = () => {
+  state.device = button.dataset.device;
+  document.querySelectorAll(".deviceChoice").forEach((item) => item.classList.toggle("selected", item === button));
+  $("rememberRow").classList.toggle("hidden", state.device !== "personal");
+  if (state.device === "shared") $("rememberLogin").checked = false;
+});
+$("loginForm").addEventListener("submit", login);
+$("logoutButton").onclick = async () => { try { await api("logout", {}, { silent: true }); } catch {} clearSessions(); location.reload(); };
+$("adminEntry").onclick = openAdminReauth;
+$("modalClose").onclick = closeModal;
+$("modal").addEventListener("click", (event) => { if (event.target === $("modal")) closeModal(); });
 
-  (async function init() {
-    const saved = restoreSession();
-    if (!saved) return;
-    Object.assign(state, saved);
-    try {
-      if (state.role === 'student') await renderStudent(); else staffSearchScreen();
-    } catch (_) { clearSession(true); showEntry(); }
-  })();
-})();
+restore();

@@ -1,0 +1,8 @@
+{
+  "name": "foresta-progress-v2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/domain.test.mjs && node tests/gas-pure.test.mjs"
+  }
+}

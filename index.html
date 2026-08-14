@@ -4,63 +4,66 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="学校別・教科書別に先取り学習を管理するフォレスタ進捗管理">
   <title>フォレスタ進捗管理</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#home"><span class="brand-mark">F</span><span><strong>フォレスタ進捗管理</strong><small>通常授業・学校先取り</small></span></a>
-    <a class="goal-link" href="https://stepkobetsu-hub.github.io/foresta-step-progress/">フォレスタ＆ゴールへ</a>
+    <a class="brand" href="#" aria-label="フォレスタ進捗管理 ホーム"><span class="brandMark">F</span><span>フォレスタ進捗管理</span></a>
+    <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">フォレスタ＆ゴールへ ↗</a>
   </header>
 
-  <main id="app" class="shell">
-    <section id="entry" class="entry card">
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-login-tab="student">生徒用</button>
-        <button class="tab" data-login-tab="staff">講師用</button>
+  <main id="app" class="appShell">
+    <section id="loginView" class="loginLayout">
+      <div class="heroCard">
+        <span class="eyebrow">学校の一歩先へ</span>
+        <h1>次のテストまでの道のりを、<br>一つずつ見える形に。</h1>
+        <p>正式なフォレスタ進行表を、学校・学年・教科書・受講レベルに合わせて表示します。</p>
+        <div class="heroPoints"><span>正式単元</span><span>学校別範囲</span><span>宿題・CT</span></div>
       </div>
-      <div class="entry-copy">
-        <span class="eyebrow">学校より一歩先へ</span>
-        <h1>今日の授業を、次のテストにつなげる。</h1>
-        <p>学校進度、フォレスタ進度、CT、宿題をひとつの画面で確認します。</p>
+
+      <div class="loginCard">
+        <div class="roleTabs" role="tablist" aria-label="ログイン種別">
+          <button class="roleTab active" data-role="student" role="tab" aria-selected="true">生徒用</button>
+          <button class="roleTab" data-role="teacher" role="tab" aria-selected="false">講師用</button>
+        </div>
+        <div class="devicePrompt">
+          <p>この端末はどちらですか？</p>
+          <div class="deviceChoices">
+            <button class="deviceChoice" data-device="personal"><strong>自分の端末</strong><small>希望時だけログインを記憶</small></button>
+            <button class="deviceChoice" data-device="shared"><strong>塾の共用端末</strong><small>情報を端末に残しません</small></button>
+          </div>
+        </div>
+        <form id="loginForm" class="loginForm" autocomplete="off">
+          <label><span id="loginIdLabel">生徒ID</span><input id="loginId" inputmode="numeric" autocomplete="username" required></label>
+          <label><span>パスワード</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
+          <label id="rememberRow" class="checkRow hidden"><input id="rememberLogin" type="checkbox"><span>この端末でログイン状態を記憶する</span></label>
+          <button class="primaryBtn" type="submit">ログイン</button>
+          <p id="loginMessage" class="formMessage" role="alert"></p>
+        </form>
       </div>
-      <form id="loginForm" class="login-form">
-        <h2 id="loginTitle">生徒ログイン</h2>
-        <fieldset class="device-choice">
-          <legend>この端末はどちらですか？</legend>
-          <label><input type="radio" name="device" value="personal" required><span><b>自分のスマートフォン・タブレット</b><small>ログイン状態を安全に記憶できます</small></span></label>
-          <label><input type="radio" name="device" value="shared" required><span><b>塾の共用端末</b><small>ログイン情報を端末に残しません</small></span></label>
-        </fieldset>
-        <label><span id="idLabel">生徒番号</span><input id="loginId" autocomplete="username" required></label>
-        <label><span>パスワード</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
-        <button class="primary" type="submit">ログイン</button>
-        <p id="loginMessage" class="form-message" aria-live="polite"></p>
-      </form>
-      <button id="adminEntry" class="admin-entry" type="button">管理者ページ</button>
     </section>
 
-    <section id="workspace" class="workspace hidden" aria-live="polite"></section>
+    <section id="workspace" class="workspace hidden" aria-live="polite">
+      <aside class="sideNav">
+        <div class="userBadge"><span id="userInitial">F</span><div><strong id="userName">—</strong><small id="userMeta">—</small></div></div>
+        <nav id="navItems"></nav>
+        <button id="logoutButton" class="textButton danger">ログアウト</button>
+      </aside>
+      <section class="contentPane">
+        <div id="globalStatus" class="statusLine hidden"></div>
+        <div id="content"></div>
+      </section>
+    </section>
   </main>
 
-  <div id="toast" class="toast" role="status"></div>
-  <div id="loading" class="loading hidden"><span></span><p>読み込んでいます…</p></div>
-  <dialog id="reauthDialog">
-    <form id="reauthForm" method="dialog" class="dialog-form">
-      <button class="dialog-close" value="cancel" aria-label="閉じる">×</button>
-      <span class="eyebrow">管理者設定</span><h2>講師認証をもう一度</h2>
-      <p>設定を開くため、講師IDとパスワードを再入力してください。</p>
-      <label>講師ID<input id="reauthId" autocomplete="username" required></label>
-      <label>パスワード<input id="reauthPassword" type="password" autocomplete="current-password" required></label>
-      <button id="reauthSubmit" class="primary" type="submit" value="default">認証して開く</button>
-      <p id="reauthMessage" class="form-message"></p>
-    </form>
-  </dialog>
+  <footer class="footer"><button id="adminEntry" class="adminEntry">管理者ページ</button><span>© 個別指導Step</span></footer>
 
-  <template id="unitTemplate">
-    <label class="unit-row"><input type="checkbox"><span class="unit-number"></span><span class="unit-name"></span><span class="unit-meta"></span></label>
-  </template>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <dialog id="modal" class="modal"><div class="modalFrame"><button id="modalClose" class="modalClose" type="button" aria-label="閉じる">×</button><div id="modalBody"></div></div></dialog>
+  <template id="loadingTemplate"><div class="loadingCard"><span class="spinner"></span><p>読み込み中です…</p></div></template>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

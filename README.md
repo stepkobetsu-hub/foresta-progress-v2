@@ -1,25 +1,31 @@
-# フォレスタ進捗管理 v2
+# フォレスタ進捗管理
 
-学校の授業を先取りする通常授業用の進捗管理アプリです。既存のステップ＆ゴール進捗管理・旧フォレスタ進捗管理とは別の新規プロジェクトです。
+学校授業の先取りに使う通常授業用フォレスタの進捗管理アプリです。生徒・講師・管理者の3画面を、GitHub Pages、Google Apps Script、新規専用Googleスプレッドシートで構成します。
+
+## データの扱い
+
+- 在籍対象は生徒マスタB列が文字列または数値の `1` / `0` の行だけです。
+- 学校名は生徒マスタP列を正本とし、学校・学年・科目・テストID単位で範囲を分離します。
+- 英語レベルは時間割マスタAO列、数学レベルはAP列を使用します。
+- 生徒・時間割・講師・成績の既存データは読み取り専用です。
+- 授業、単元、CT、宿題、目標点、コメント、注意事項は専用スプレッドシートにだけ保存します。
+- パスワードは保存、ログ出力、ブラウザーへの再送をしません。ブラウザーが保持するのは発行済みセッショントークンだけです。
+- メール通知は初期状態で `SUPPRESS`（送信抑止）です。
+
+## 開発時の確認
+
+```text
+npm test
+```
+
+ドメイン規則とGASの純粋関数を検証します。公開前には、GASのヘルス確認、実データによる認証・進行表表示、共用端末の保存抑止、スマートフォン表示を別途確認します。
 
 ## 構成
 
-- GitHub Pages: `index.html`, `styles.css`, `app.js`, `config.js`
-- Google Apps Script: `gas/Code.gs`, `gas/appsscript.json`
-- 保存先: 新規の専用Googleスプレッドシート
+- `index.html` / `styles.css` / `app.js` / `domain.js`: GitHub Pages用フロントエンド
+- `config.js`: 公開GAS URLなどの公開設定
+- `apps-script/Code.gs`: 新規GASバックエンド
+- `apps-script/appsscript.json`: GASマニフェスト
+- `tests/`: ローカル検証
 
-## 本番URL
-
-- アプリ: https://stepkobetsu-hub.github.io/foresta-progress-v2/
-- Apps Script API: https://script.google.com/macros/s/AKfycbx-KkkOPgOTgauFIcT9JFbuz1zgULkZRNx25PwbTWQabw2jUKdZr9ia2kkJljScEBSXVg/exec
-- 保存先・各マスタ・正式単元表のIDは、公開リポジトリに置かずApps ScriptのScript Propertiesで管理します。
-
-## 公開時の設定
-
-1. `gas/Code.gs` を新規Apps Scriptへ配置し、ウェブアプリとしてデプロイします。
-2. Apps ScriptのScript Propertiesに `DB_ID`、各マスタID、各正式単元表IDを設定します。
-3. 取得した `/exec` URLを `config.js` の `apiUrl` に設定します。
-4. `refreshUnitMaster()` を一度実行し、正式な26F進行表から単元マスタを作成します。
-5. 検証完了後、保存シート「設定」の `MAIL_SUPPRESS` を `FALSE` にします。
-
-パスワード、セッショントークン、生徒の進捗データはGitHubへ保存しません。
+公開URL: https://stepkobetsu-hub.github.io/foresta-progress-v2/
