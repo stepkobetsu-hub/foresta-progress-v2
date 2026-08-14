@@ -42,6 +42,8 @@ assert.match(gas, /target\.setDate\(target\.getDate\(\) - 14\)/);
 assert.match(gas, /MAIL_SUPPRESS/);
 assert.match(gas, /scriptProperty_\('DB_ID'\)/);
 assert.doesNotMatch(gas, /DB_ID:\s*['"][A-Za-z0-9_-]{20,}/);
+assert.match(gas, /rosterStatus: clean_\(r\[1\]\)/);
+assert.match(gas, /s\.rosterStatus !== '1' && s\.rosterStatus !== '0'/);
 
 const parsedManifest = JSON.parse(manifest);
 assert.equal(parsedManifest.name, 'フォレスタ進捗管理');

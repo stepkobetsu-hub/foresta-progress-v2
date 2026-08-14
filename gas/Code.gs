@@ -192,7 +192,7 @@ function readStudents_() {
   const sh = SpreadsheetApp.openById(APP.STUDENT_MASTER_ID).getSheetByName('☆マスタ');
   const v = sh.getDataRange().getDisplayValues();
   return v.slice(1).filter(r => clean_(r[0])).map((r, i) => ({
-    row: i + 2, id: clean_(r[0]), name: clean_(r[4]), kana: clean_(r[5]), classroom: clean_(r[7]),
+    row: i + 2, id: clean_(r[0]), rosterStatus: clean_(r[1]), name: clean_(r[4]), kana: clean_(r[5]), classroom: clean_(r[7]),
     grade: normalizeGrade_(r[10]), password: r[11], school: clean_(r[15]), schoolKey: normalizeSchool_(r[15])
   }));
 }
@@ -314,6 +314,7 @@ function searchStudents_(p) {
   const query = normalizeSearch_(p.query || '');
   const scheduleIndex = Object.fromEntries(readSchedule_().map(x => [x.id, x]));
   return readStudents_().filter(s => {
+    if (s.rosterStatus !== '1' && s.rosterStatus !== '0') return false;
     if (p.classroom && s.classroom !== p.classroom) return false;
     if (p.grade && s.grade !== normalizeGrade_(p.grade)) return false;
     const hay = normalizeSearch_([s.id, s.name, s.kana, s.classroom, s.grade, s.school].join(' '));
