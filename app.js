@@ -398,15 +398,39 @@ function showModal(html) { $("modalBody").innerHTML = html; if (!$("modal").open
 function closeModal() { if ($("modal").open) $("modal").close(); }
 
 function openAdminReauth() {
-  if (!state.session || state.role !== "teacher") {
-    state.role = "teacher";
-    $("loginIdLabel").textContent = "講師ID";
-    $("loginMessage").textContent = "管理者ページは講師としてログイン後に開けます。";
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    return;
-  }
-  showModal(`<h2>管理者設定の再認証</h2><p>講師IDとパスワードをもう一度入力してください。</p><form id="adminReauthForm" class="loginForm"><label><span>講師ID</span><input name="code" value="${esc(state.session.loginId || "")}" required></label><label><span>パスワード</span><input name="password" type="password" required autocomplete="current-password"></label><button class="primaryBtn">管理者ページを開く</button><p id="reauthError" class="formMessage"></p></form>`);
-  $("adminReauthForm").onsubmit = async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { const result = await api("adminReauth", Object.fromEntries(form), { silent: true }); state.adminToken = result.adminToken; state.role = "admin"; state.activeView = "admin"; closeModal(); renderShell(); openView("admin"); } catch (error) { $("reauthError").textContent = error.message; } };
+  const hasTeacherSession = Boolean(state.session && state.session.role === "teacher");
+  showModal(`<h2>管理者ログイン</h2><p>管理者権限のある講師IDとパスワードを入力してください。</p><form id="adminReauthForm" class="loginForm" autocomplete="off"><label><span>講師ID</span><input name="code" value="${hasTeacherSession ? esc(state.session.loginId || "") : ""}" autocomplete="username" required autofocus></label><label><span>パスワード</span><input name="password" type="password" required autocomplete="current-password"></label><button class="primaryBtn">管理者画面を開く</button><p id="reauthError" class="formMessage" role="alert"></p></form>`);
+  $("adminReauthForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button[type='submit'], button:not([type])");
+    const form = Object.fromEntries(new FormData(event.currentTarget));
+    const previousSession = state.session;
+    const previousRole = state.role;
+    button.disabled = true;
+    $("reauthError").textContent = "確認中…";
+    try {
+      if (!hasTeacherSession) {
+        const staff = await api("staffLogin", { loginId: form.code, password: form.password, deviceMode: "shared" }, { silent: true });
+        state.session = staff.session;
+        state.role = "teacher";
+      }
+      const result = await api("adminReauth", form, { silent: true });
+      state.adminToken = result.adminToken;
+      state.role = "admin";
+      state.activeView = "admin";
+      closeModal();
+      renderShell();
+      openView("admin");
+    } catch (error) {
+      if (!hasTeacherSession && state.session) {
+        try { await api("logout", {}, { silent: true }); } catch {}
+        state.session = previousSession;
+        state.role = previousRole;
+      }
+      button.disabled = false;
+      $("reauthError").textContent = "IDまたはパスワード、管理者権限を確認してください。";
+    }
+  };
 }
 
 async function login(event) {
