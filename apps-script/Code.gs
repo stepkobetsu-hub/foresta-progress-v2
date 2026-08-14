@@ -367,7 +367,11 @@ function homeworkFor_(studentId) {
 
 function todayScheduledStudents_() {
   const active = {}; getActiveStudents_().forEach(function(student) { active[student.studentId] = student; });
-  const rows = getTimetableRows_(), day = ['日','月','火','水','木','金','土'][Number(Utilities.formatDate(new Date(), CONFIG.TIME_ZONE, 'u')) % 7], out = {}, headerDays = [], current = '';
+  const rows = getTimetableRows_();
+  const day = ['日','月','火','水','木','金','土'][Number(Utilities.formatDate(new Date(), CONFIG.TIME_ZONE, 'u')) % 7];
+  const out = {};
+  const headerDays = [];
+  let current = '';
   for (let col = 4; col < 28; col++) { if (text_(rows[0][col])) current = text_(rows[0][col]).replace('プロ',''); headerDays[col] = current; }
   for (let i = 2; i < rows.length; i++) {
     const id = text_(rows[i][0]); if (!active[id]) continue;
