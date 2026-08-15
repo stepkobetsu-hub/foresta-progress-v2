@@ -31,6 +31,7 @@ const DEFAULT_HOMEWORK = {
   数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],
   英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
 };
+let teacherSearchTimer = 0;
 
 async function api(action, payload = {}, { silent = false } = {}) {
   if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");
@@ -223,14 +224,25 @@ function renderScoresPage(data) {
 async function renderTeacher(view) {
   if (view === "today") return renderToday();
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
-  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
-  $("searchButton").onclick = runStudentSearch;
-  $("studentSearch").onkeydown = (event) => { if (event.key === "Enter") runStudentSearch(); };
+  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。入力すると自動で検索します。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><div id="searchResults" class="searchResults"><div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div></div></article>${selectedTabsHtml()}`;
+  $("studentSearch").oninput = scheduleStudentSearch;
+  $("campusFilter").onchange = scheduleStudentSearch;
+  $("gradeFilter").onchange = scheduleStudentSearch;
+  $("studentSearch").onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); clearTimeout(teacherSearchTimer); runStudentSearch(); } };
   bindSelectedTabs();
+}
+
+function scheduleStudentSearch() {
+  clearTimeout(teacherSearchTimer);
+  teacherSearchTimer = setTimeout(() => { if ($("studentSearch")) runStudentSearch(); }, 250);
 }
 
 async function runStudentSearch() {
   const results = $("searchResults");
+  if (!$("studentSearch").value.trim() && !$("campusFilter").value && !$("gradeFilter").value) {
+    results.innerHTML = '<div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div>';
+    return;
+  }
   results.innerHTML = '<div class="loadingCard"><span class="spinner"></span></div>';
   try {
     const data = await api("searchStudents", { query: $("studentSearch").value, campus: $("campusFilter").value, grade: $("gradeFilter").value }, { silent: true });
