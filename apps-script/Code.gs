@@ -55,6 +55,8 @@ function route_(data) {
     case 'saveRange': return saveRange_(data);
     case 'saveSchoolPosition': return saveSchoolPosition_(data);
     case 'saveLesson': return saveLesson_(data);
+    case 'getLessonCorrections': return getLessonCorrections_(data);
+    case 'updateLessonCorrection': return updateLessonCorrection_(data);
     case 'saveCt': return saveCt_(data);
     case 'studentCheckHomework': return studentCheckHomework_(data);
     case 'teacherCheckHomework': return teacherCheckHomework_(data);
@@ -438,6 +440,66 @@ function saveLesson_(data) {
   const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),source=unitsFor_(student,subject),valid=new Set(source.units.map(function(u){return u.unitId;})),ids=Array.from(new Set(data.unitIds||[])),key=text_(data.idempotencyKey);if(!key||!ids.length||ids.some(function(id){return!valid.has(id);}))throw new Error('INVALID_UNIT');const nextTest=nextTestFor_(student),predicted=rangeIds_('学校別予想テスト範囲',student,subject,nextTest&&nextTest.testId),decided=rangeIds_('学校別決定テスト範囲',student,subject,nextTest&&nextTest.testId),effective=decided.size?decided:predicted;if(student.grade!=='中3'&&effective.size&&ids.some(function(id){return!effective.has(id);}))throw new Error('OUTSIDE_TEST_RANGE');
   const candidateId=text_(data.teacherId)||session.loginId,candidate=getActiveTeachers_().find(function(t){return t.loginId===candidateId&&teacherMatchesCampus_(t.campus,student.campus);});if(!candidate)throw new Error('FORBIDDEN');
   const specialHomework='巻末のKeyWordsTestの暗記',allowed=subject==='英語'?['KeyWords「☆日→英」暗記','exercise「暗記マーク」暗記','Try赤×直し','exercise','宿題の赤×直し',specialHomework]:subject==='数学'?['TRYの赤×直し','exercise','宿題の赤×直し',specialHomework]:[],fallbackRequested=Array.isArray(data.homeworkItems)?data.homeworkItems.map(text_):allowed,homeworkByUnit=data.homeworkByUnit&&typeof data.homeworkByUnit==='object'?data.homeworkByUnit:{},unitMap={};source.units.forEach(function(unit){unitMap[unit.unitId]=unit;});const lock=LockService.getScriptLock();lock.waitLock(30000);try{const existingLessons=objects_('授業記録'),existing=existingLessons.find(function(r){return text_(r['冪等キー'])===key;});if(existing)return{saved:true,lessonId:text_(existing['授業ID']),duplicatePrevented:true};const existingHomeworkKeys=new Set(objects_('宿題').map(function(r){return text_(r['冪等キー']);})),lessonId=uuid_('LESSON'),now=new Date(),due=new Date(now),prior=new Set(objects_('授業実施単元').filter(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject;}).map(function(r){return text_(r['単元ID']);})),lessonUnitRows=[],homeworkRows=[];due.setDate(due.getDate()+2);appendObject_('授業記録',{'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'授業日':now,'予定担当講師ID':session.loginId,'予定担当講師名':session.name,'実担当講師ID':candidate.loginId,'実担当講師名':candidate.name,'冪等キー':key,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});ids.forEach(function(unitId){const raw=Array.isArray(homeworkByUnit[unitId])?homeworkByUnit[unitId].map(text_):fallbackRequested,validated=Array.from(new Set(raw.filter(function(item){return allowed.indexOf(item)>=0||/^その他：.{1,120}$/u.test(item);}))),unitHomework=homeworkItemsForUnit_(subject,unitMap[unitId],validated);lessonUnitRows.push({'授業単元ID':uuid_('LESSONUNIT'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'実施日':now,'再学習':prior.has(unitId),'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});unitHomework.forEach(function(type){const homeworkKey=lessonId+'|'+unitId+'|'+type;if(existingHomeworkKeys.has(homeworkKey))return;const other=/^その他：/u.test(type);homeworkRows.push({'宿題ID':uuid_('HW'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'内容種別':other?'その他':type,'内容本文':type,'推奨完了日':due,'有効':true,'その他':other?type.replace(/^その他：/u,''):'','冪等キー':homeworkKey,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});});});appendObjects_('授業実施単元',lessonUnitRows);appendObjects_('宿題',homeworkRows);audit_(session,'授業保存','授業記録',lessonId,'成功',ids.length+'単元');return{saved:true,lessonId:lessonId,unitCount:ids.length,homeworkCount:homeworkRows.length};}finally{lock.releaseLock();}
+}
+
+function getLessonCorrections_(data) {
+  const session = requireRole_(data, ['teacher']), student = getActiveStudent_(data.studentId);
+  if (!teacherMatchesCampus_(session.campus, student.campus)) throw new Error('FORBIDDEN');
+  const lessons = objects_('授業記録').filter(function(row) {
+    return text_(row['生徒ID']) === student.studentId && TRACKED_SUBJECTS.indexOf(text_(row['科目'])) >= 0;
+  }).sort(function(a, b) { return new Date(b['授業日']) - new Date(a['授業日']); }).slice(0, 12);
+  const lessonUnits = objects_('授業実施単元'), homeworkRows = objects_('宿題'), unitMap = {};
+  objects_('単元マスタ').forEach(function(row) {
+    unitMap[text_(row['単元ID'])] = { unitId: text_(row['単元ID']), chapter: text_(row['章']), unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']) };
+  });
+  return { lessons: lessons.map(function(lesson) {
+    const lessonId = text_(lesson['授業ID']), unitIds = lessonUnits.filter(function(row) { return text_(row['授業ID']) === lessonId; }).map(function(row) { return text_(row['単元ID']); });
+    const homeworkByUnit = {};
+    homeworkRows.filter(function(row) { return text_(row['授業ID']) === lessonId && String(row['有効']).toUpperCase() !== 'FALSE'; }).forEach(function(row) {
+      const unitId = text_(row['単元ID']); if (!homeworkByUnit[unitId]) homeworkByUnit[unitId] = [];
+      homeworkByUnit[unitId].push(text_(row['内容本文']) || text_(row['内容種別']));
+    });
+    return { lessonId: lessonId, date: lesson['授業日'], subject: text_(lesson['科目']), teacherName: text_(lesson['実担当講師名']), unitIds: unitIds, units: unitIds.map(function(id) { return unitMap[id] || { unitId: id, chapter: '', unitNumber: id, unitName: '' }; }), homeworkByUnit: homeworkByUnit };
+  }) };
+}
+
+function updateLessonCorrection_(data) {
+  const session = requireRole_(data, ['teacher']), student = getActiveStudent_(data.studentId), lessonId = text_(data.lessonId);
+  if (!teacherMatchesCampus_(session.campus, student.campus)) throw new Error('FORBIDDEN');
+  const lesson = objects_('授業記録').find(function(row) { return text_(row['授業ID']) === lessonId && text_(row['生徒ID']) === student.studentId; });
+  if (!lesson) throw new Error('INVALID_VALUE');
+  const subject = text_(lesson['科目']), source = unitsFor_(student, subject), unitMap = {}, valid = new Set();
+  source.units.forEach(function(unit) { unitMap[unit.unitId] = unit; valid.add(unit.unitId); });
+  const ids = Array.from(new Set((data.unitIds || []).map(text_)));
+  if (!ids.length || ids.some(function(id) { return !valid.has(id); })) throw new Error('INVALID_UNIT');
+  const specialHomework = '巻末のKeyWordsTestの暗記', allowed = subject === '英語' ? ['KeyWords「☆日→英」暗記','exercise「暗記マーク」暗記','Try赤×直し','exercise','宿題の赤×直し',specialHomework] : subject === '数学' ? ['TRYの赤×直し','exercise','宿題の赤×直し',specialHomework] : [];
+  const homeworkByUnit = data.homeworkByUnit && typeof data.homeworkByUnit === 'object' ? data.homeworkByUnit : {}, lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const now = new Date(), lessonDate = new Date(lesson['授業日']), dueFallback = new Date(lessonDate), oldUnits = objects_('授業実施単元').filter(function(row) { return text_(row['授業ID']) === lessonId; }), oldUnitMap = {}, prior = new Set(), newUnitRows = [];
+    oldUnits.forEach(function(row) { oldUnitMap[text_(row['単元ID'])] = row; });
+    objects_('授業実施単元').filter(function(row) { return text_(row['授業ID']) !== lessonId && text_(row['生徒ID']) === student.studentId && text_(row['科目']) === subject; }).forEach(function(row) { prior.add(text_(row['単元ID'])); });
+    ids.forEach(function(unitId) {
+      const old = oldUnitMap[unitId] || {};
+      newUnitRows.push({'授業単元ID':text_(old['授業単元ID'])||uuid_('LESSONUNIT'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'実施日':old['実施日']||lessonDate,'再学習':prior.has(unitId),'作成日時':old['作成日時']||now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});
+    });
+    dueFallback.setDate(dueFallback.getDate() + 2);
+    const oldHomework = objects_('宿題').filter(function(row) { return text_(row['授業ID']) === lessonId; }), oldHomeworkMap = {}, newHomeworkRows = [];
+    oldHomework.forEach(function(row) { oldHomeworkMap[text_(row['単元ID']) + '|' + (text_(row['内容本文']) || text_(row['内容種別']))] = row; });
+    ids.forEach(function(unitId) {
+      const raw = Array.isArray(homeworkByUnit[unitId]) ? homeworkByUnit[unitId].map(text_) : [], validated = Array.from(new Set(raw.filter(function(item) { return allowed.indexOf(item) >= 0 || /^その他：.{1,120}$/u.test(item); }))), unitHomework = homeworkItemsForUnit_(subject, unitMap[unitId], validated);
+      unitHomework.forEach(function(type) {
+        const old = oldHomeworkMap[unitId + '|' + type] || {}, other = /^その他：/u.test(type);
+        newHomeworkRows.push({'宿題ID':text_(old['宿題ID'])||uuid_('HW'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'内容種別':other?'その他':type,'内容本文':type,'推奨完了日':old['推奨完了日']||dueFallback,'有効':true,'その他':other?type.replace(/^その他：/u,''):'','冪等キー':lessonId+'|'+unitId+'|'+type,'作成日時':old['作成日時']||now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});
+      });
+    });
+    replaceRows_('授業実施単元', function(row) { return text_(row['授業ID']) === lessonId; }, newUnitRows);
+    replaceRows_('宿題', function(row) { return text_(row['授業ID']) === lessonId; }, newHomeworkRows);
+    const correctedLesson = Object.assign({}, lesson, {'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});
+    replaceRows_('授業記録', function(row) { return text_(row['授業ID']) === lessonId; }, [correctedLesson]);
+    audit_(session, '授業・宿題訂正', '授業記録', lessonId, '成功', ids.length + '単元・宿題' + newHomeworkRows.length + '件');
+    return { saved: true, lessonId: lessonId, unitCount: ids.length, homeworkCount: newHomeworkRows.length };
+  } finally { lock.releaseLock(); }
 }
 function createHomework_(lessonId,student,subject,unitId,items,session,date){const due=new Date(date);due.setDate(due.getDate()+2);items.forEach(function(type){const other=/^その他：/u.test(type),key=lessonId+'|'+unitId+'|'+type;if(objects_('宿題').some(function(r){return text_(r['冪等キー'])===key;}))return;appendObject_('宿題',{'宿題ID':uuid_('HW'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'内容種別':other?'その他':type,'内容本文':type,'推奨完了日':due,'有効':true,'その他':other?type.replace(/^その他：/u,''):'','冪等キー':key,'作成日時':date,'更新日時':date,'操作者ID':session.loginId,'操作者名':session.name});});}
 

@@ -216,7 +216,7 @@ function renderScoresPage(data) {
 async function renderTeacher(view) {
   if (view === "today") return renderToday();
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
-  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ）・教室・学年・学校名から検索できます。</p></div></header><article class="card"><div class="formGrid"><label class="span8"><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
+  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ）・教室・学年・学校名から検索できます。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
   $("searchButton").onclick = runStudentSearch;
   $("studentSearch").onkeydown = (event) => { if (event.key === "Enter") runStudentSearch(); };
   bindSelectedTabs();
@@ -284,8 +284,10 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   if (headerScoreCorrection) headerScoreCorrection.remove();
   const testHistoryTitle = [...$("content").querySelectorAll(".cardTitle")].find((item) => item.textContent.trim() === "定期テスト履歴");
   if (testHistoryTitle) testHistoryTitle.insertAdjacentHTML("beforeend", ` <a class="scoreCorrectionMini" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a>`);
+  $("inputLesson").insertAdjacentHTML("afterend", '<button id="correctLesson" class="ghostBtn compactCorrectionButton" type="button">宿題・進行表を訂正</button>');
   bindSelectedTabs();
   $("inputLesson").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "lesson", studentId, teacherId: $("lessonTeacher").value });
+  $("correctLesson").onclick = () => openLessonCorrection(studentId);
   $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
   $("saveComment").onclick = async () => { const text = $("teacherComment").value.trim(); if (!text) return; try { await api("saveComment", { studentId, subject: $("lessonSubject").value, text }); $("teacherComment").value = ""; status("コメントを保存しました。"); } catch (error) { status(error.message, true); } };
   bindTeacherHomeworkChecks();
@@ -374,11 +376,26 @@ function dateInputValue(value) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
+async function openLessonCorrection(studentId) {
+  showModal('<div class="loadingCard"><span class="spinner"></span><p>授業履歴を読み込み中です…</p></div>');
+  try {
+    const data = await api("getLessonCorrections", { studentId }, { silent: true });
+    const lessons = data.lessons || [];
+    $("modalBody").innerHTML = `<h2>宿題・進行表を訂正</h2><p>訂正する授業を選んでください。記録した単元と宿題を開き直せます。</p><div class="lessonCorrectionList">${lessons.map((lesson, index) => `<button type="button" class="lessonCorrectionItem" data-index="${index}"><span><strong>${fmtDate(lesson.date)}・${esc(lesson.subject)}</strong><small>${esc(lesson.teacherName || "担当未登録")}</small></span><span>${esc((lesson.units || []).map((unit) => formatProgressUnitNumber(lesson.subject, unit)).join("、") || "単元未登録")}</span><b>訂正する</b></button>`).join("") || '<div class="emptyState">訂正できる授業記録はありません。</div>'}</div>`;
+    $("modalBody").querySelectorAll(".lessonCorrectionItem").forEach((button) => button.onclick = () => {
+      const lesson = lessons[Number(button.dataset.index)];
+      openProgress({ mode: "correction", studentId, subject: lesson.subject, lessonId: lesson.lessonId, unitIds: lesson.unitIds, existingHomeworkByUnit: lesson.homeworkByUnit });
+    });
+  } catch (error) {
+    $("modalBody").innerHTML = `<h2>授業履歴を読み込めませんでした</h2><p>${esc(error.message)}</p>`;
+  }
+}
+
 async function openProgress(options) {
   showModal('<div class="loadingCard"><span class="spinner"></span><p>進行表を読み込み中です…</p></div>');
   try {
     const data = await api(options.mode === "range" ? "getRangeEditor" : "getProgression", options, { silent: true });
-    const editable = options.mode === "lesson" || options.mode === "range";
+    const editable = options.mode === "lesson" || options.mode === "correction" || options.mode === "range";
     const selected = new Set(options.unitIds || data.selectedUnitIds || []);
     const todayValue = dateInputValue(new Date());
     const todayLabel = fmtShortDate(new Date());
@@ -395,13 +412,18 @@ async function openProgress(options) {
       const details = [chapterIsIncluded ? "" : u.chapter, u.difficulty ? `難度 ${u.difficulty}` : "", rangeLocked ? "中1・中2は範囲外" : ""].filter(Boolean).join(" / ");
       const lessonDates = (u.lessonDates || []).map((date) => fmtShortDate(date)).filter(Boolean);
       const dateHistory = lessonDates.length ? `<span class="lessonDateHistory" title="授業日：${esc(lessonDates.join("、"))}"><small>授業日</small>${lessonDates.map((date) => `<b>${esc(date)}</b>`).join("")}</span>` : "";
-      const todayButton = options.mode === "lesson" && !rangeLocked ? `<button type="button" class="lessonDayToggle ${selected.has(u.unitId) ? "selected" : ""}" data-unit="${esc(u.unitId)}" aria-pressed="${selected.has(u.unitId) ? "true" : "false"}">${selected.has(u.unitId) ? "✓" : "＋"} 今日 ${esc(todayLabel)}</button>` : "";
-      const schoolButton = options.mode === "lesson" ? `<button type="button" class="schoolPinButton ${u.schoolPosition ? "active" : ""}" data-unit="${esc(u.unitId)}" aria-label="${esc(u.unitName)}を学校の現在地にする">${u.schoolPosition ? `🏫 学校はここ ${esc(fmtShortDate(u.schoolPositionAt))}` : "🏫"}</button>` : "";
+      const todayButton = (options.mode === "lesson" || options.mode === "correction") && !rangeLocked ? `<button type="button" class="lessonDayToggle ${selected.has(u.unitId) ? "selected" : ""}" data-unit="${esc(u.unitId)}" aria-pressed="${selected.has(u.unitId) ? "true" : "false"}">${options.mode === "correction" ? (selected.has(u.unitId) ? "✓ 記録済み" : "＋ 追加") : `${selected.has(u.unitId) ? "✓" : "＋"} 今日 ${esc(todayLabel)}`}</button>` : "";
+      const schoolButton = options.mode === "lesson" ? `<button type="button" class="schoolPinButton ${u.schoolPosition ? "active" : ""}" data-unit="${esc(u.unitId)}" aria-label="${esc(u.unitName)}を学校の現在地にする">${u.schoolPosition ? `🏫 学校 ${esc(fmtShortDate(u.schoolPositionAt))}` : "🏫"}</button>` : "";
       return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""}" data-unit="${esc(u.unitId)}"><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}><span class="unitNumber">${esc(displayNumber)}</span><span class="unitName"><strong>${esc(u.unitName)}</strong>${details ? `<br><small>${esc(details)}</small>` : ""}</span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
     }).join("");
-    const schoolGuide = options.mode === "lesson" ? `<div class="schoolPositionGuide"><div><strong>🏫 学校の現在地</strong><span>学校が現在ここまで進んでいる単元の「🏫」を押してください。</span></div><label><span>確認日</span><input id="schoolPositionDate" class="field" type="date" value="${esc(todayValue)}"></label><output id="schoolPositionStatus" aria-live="polite"></output></div>` : "";
-    $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p>${schoolGuide}<div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span><span><i style="background:var(--school)"></i>学校の現在地</span></div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${options.mode === "lesson" ? '<span class="toolbarHint">各単元右側の「＋ 今日」を押して授業日を付けます。</span><button id="saveLesson" class="primaryBtn">授業と宿題を保存</button>' : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>'}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
-    if (options.mode === "lesson" && $("selectedCount") && state.dashboard?.student?.name) $("selectedCount").insertAdjacentHTML("afterend", `<strong class="progressStudentName">${esc(state.dashboard.student.name)}さん</strong>`);
+    const schoolLegend = options.mode === "lesson" ? `<span class="schoolLegendControl"><i style="background:var(--school)"></i><b>学校の現在地</b><small>単元右の🏫を押す</small><input id="schoolPositionDate" type="date" value="${esc(todayValue)}" aria-label="学校進度の確認日"><output id="schoolPositionStatus" aria-live="polite"></output></span>` : '<span><i style="background:var(--school)"></i>学校の現在地</span>';
+    const progressActions = options.mode === "lesson"
+      ? '<span class="toolbarHint">各単元右側の「＋ 今日」を押して授業日を付けます。</span><button id="saveLesson" class="primaryBtn">授業と宿題を保存</button>'
+      : options.mode === "correction"
+        ? '<span class="toolbarHint">記録した単元を選び直してください。</span><button id="saveLesson" class="primaryBtn">宿題設定へ</button>'
+        : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>';
+    $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p><div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span>${schoolLegend}</div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${progressActions}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
+    if ((options.mode === "lesson" || options.mode === "correction") && $("selectedCount") && state.dashboard?.student?.name) $("selectedCount").insertAdjacentHTML("afterend", `<strong class="progressStudentName">${esc(state.dashboard.student.name)}さん</strong>`);
     const checks = [...$("modalBody").querySelectorAll(".unitCheck:not(:disabled)")];
     const groupToggles = [...$("modalBody").querySelectorAll(".chapterToggle")];
     const updateGroupToggles = () => groupToggles.forEach((toggle) => {
@@ -418,7 +440,7 @@ async function openProgress(options) {
       const isSelected = Boolean(check?.checked);
       button.classList.toggle("selected", isSelected);
       button.setAttribute("aria-pressed", isSelected ? "true" : "false");
-      button.textContent = `${isSelected ? "✓" : "＋"} 今日 ${todayLabel}`;
+      button.textContent = options.mode === "correction" ? (isSelected ? "✓ 記録済み" : "＋ 追加") : `${isSelected ? "✓" : "＋"} 今日 ${todayLabel}`;
       button.closest(".unitRow")?.classList.toggle("todaySelected", isSelected);
     });
     const count = () => { const el = $("selectedCount"); if (el) el.textContent = `${checks.filter((c) => c.checked).length}単元`; updateGroupToggles(); syncLessonDayButtons(); };
@@ -434,14 +456,14 @@ async function openProgress(options) {
     });
     $("modalBody").querySelectorAll(".schoolPinButton").forEach((button) => button.onclick = async (event) => {
       event.preventDefault();
-      const recordedDate = $("schoolPositionDate").value;
+      const recordedDate = $("schoolPositionDate")?.value || todayValue;
       button.disabled = true;
       try {
         const result = await api("saveSchoolPosition", { studentId: options.studentId, subject: options.subject, unitId: button.dataset.unit, recordedDate }, { silent: true });
         $("modalBody").querySelectorAll(".schoolPinButton").forEach((item) => { item.classList.remove("active"); item.textContent = "🏫"; });
         $("modalBody").querySelectorAll(".unitRow").forEach((row) => row.classList.remove("schoolPosition"));
         button.classList.add("active");
-        button.textContent = `🏫 学校はここ ${fmtShortDate(result.recordedDate || recordedDate)}`;
+        button.textContent = `🏫 学校 ${fmtShortDate(result.recordedDate || recordedDate)}`;
         button.closest(".unitRow")?.classList.add("schoolPosition");
         $("schoolPositionStatus").textContent = `学校の現在地を${fmtShortDate(result.recordedDate || recordedDate)}で保存しました。`;
         delete state.teacherStudentCache[String(options.studentId)];
@@ -452,7 +474,7 @@ async function openProgress(options) {
     if ($("saveRange")) $("saveRange").onclick = async () => { const unitIds = checks.filter((c) => c.checked).map((c) => c.value); if (!confirm(`${unitIds.length}単元を${options.rangeType}範囲として保存します。よろしいですか？`)) return; try { await api("saveRange", { ...options, unitIds }); closeModal(); status("学校別テスト範囲を保存しました。"); } catch (error) { status(error.message, true); } };
     if ($("saveLesson")) $("saveLesson").onclick = () => {
       const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
-      if (!unitIds.length) return status("今回進んだ単元を選択してください。", true);
+      if (!unitIds.length) return status(options.mode === "correction" ? "訂正後の単元を1つ以上選択してください。" : "今回進んだ単元を選択してください。", true);
       openHomeworkSetup({ ...options, unitIds, selectedUnits: (data.units || []).filter((unit) => unitIds.includes(unit.unitId)), idempotencyKey: options.idempotencyKey || crypto.randomUUID() });
     };
     $("modalBody").querySelectorAll(".ctButton").forEach((button) => button.onclick = () => openCtForm(options, button.dataset.unit));
@@ -464,13 +486,16 @@ async function openProgress(options) {
 
 function openHomeworkSetup(options) {
   const defaults = DEFAULT_HOMEWORK[options.subject] || [];
+  const correcting = options.mode === "correction";
   const groups = (options.selectedUnits || []).map((unit, index) => {
     const isKeyWords = /key\s*words\s*test/iu.test(`${String(unit.unitName || "")} ${String(unit.unitNumber || "")}`);
     const unitLabel = `${formatProgressUnitNumber(options.subject, unit)} ${unit.unitName || ""}`.trim();
     const items = isKeyWords ? ["巻末のKeyWordsTestの暗記"] : defaults;
-    return `<details class="unitHomeworkGroup" data-unit="${esc(unit.unitId)}" ${index === 0 ? "open" : ""}><summary><strong>${esc(unitLabel)}</strong><span class="badge">${items.length}項目</span></summary><div class="compactHomeworkGrid">${items.map((item) => `<label><input class="unitHomeworkPreset" type="checkbox" value="${esc(item)}" ${isKeyWords ? "checked disabled" : "checked"}><span>${esc(item)}</span></label>`).join("")}</div>${isKeyWords ? '<p class="fixedHomeworkNote">この単元は巻末のKeyWordsTestの暗記だけを登録します。</p>' : '<input class="field unitOtherHomework" maxlength="120" placeholder="この単元だけのその他の宿題（必要な場合）">'}</details>`;
+    const existingItems = options.existingHomeworkByUnit?.[unit.unitId] || [];
+    const otherValue = existingItems.find((item) => String(item).startsWith("その他："))?.replace(/^その他：/u, "") || "";
+    return `<details class="unitHomeworkGroup" data-unit="${esc(unit.unitId)}" ${index === 0 ? "open" : ""}><summary><strong>${esc(unitLabel)}</strong><span class="badge">${items.length}項目</span></summary><div class="compactHomeworkGrid">${items.map((item) => { const checked = isKeyWords || !correcting || existingItems.includes(item); return `<label><input class="unitHomeworkPreset" type="checkbox" value="${esc(item)}" ${checked ? "checked" : ""} ${isKeyWords ? "disabled" : ""}><span>${esc(item)}</span></label>`; }).join("")}</div>${isKeyWords ? '<p class="fixedHomeworkNote">この単元は巻末のKeyWordsTestの暗記だけを登録します。</p>' : `<input class="field unitOtherHomework" maxlength="120" value="${esc(otherValue)}" placeholder="この単元だけのその他の宿題（必要な場合）">`}</details>`;
   }).join("");
-  showModal(`<h2>次回宿題を確認</h2><p>${options.unitIds.length}単元の宿題を、単元ごとに確認できます。変更する単元だけ開いて、不要な宿題を外してください。</p><div class="unitHomeworkGroups">${groups}</div><output id="lessonSaveStatus" class="lessonSaveStatus" aria-live="polite"></output><div class="actionRow lessonSaveActions"><button id="backToProgress" class="ghostBtn" type="button">単元選択へ戻る</button><button id="confirmLesson" class="primaryBtn" type="button">授業と宿題を保存</button></div>`);
+  showModal(`<h2>${correcting ? "宿題を訂正" : "次回宿題を確認"}</h2><p>${options.unitIds.length}単元の宿題を、単元ごとに確認できます。変更する単元だけ開いて、不要な宿題を外してください。</p><div class="unitHomeworkGroups">${groups}</div><output id="lessonSaveStatus" class="lessonSaveStatus" aria-live="polite"></output><div class="actionRow lessonSaveActions"><button id="backToProgress" class="ghostBtn" type="button">単元選択へ戻る</button><button id="confirmLesson" class="primaryBtn" type="button">${correcting ? "訂正内容を保存" : "授業と宿題を保存"}</button></div>`);
   $("backToProgress").onclick = () => openProgress(options);
   $("confirmLesson").onclick = () => {
     const homeworkByUnit = {};
@@ -485,18 +510,20 @@ function openHomeworkSetup(options) {
 }
 
 async function saveLessonWithHomework(options, homeworkByUnit) {
+  const correcting = options.mode === "correction";
+  const buttonLabel = correcting ? "訂正内容を保存" : "授業と宿題を保存";
   const button = $("confirmLesson");
   if (button) { button.disabled = true; button.textContent = "保存中…"; }
   if ($("lessonSaveStatus")) $("lessonSaveStatus").textContent = "保存しています。画面を閉じずにお待ちください。";
   try {
-    await api("saveLesson", { studentId: options.studentId, subject: options.subject, teacherId: options.teacherId, unitIds: options.unitIds, homeworkByUnit, idempotencyKey: options.idempotencyKey });
+    await api(correcting ? "updateLessonCorrection" : "saveLesson", { studentId: options.studentId, subject: options.subject, lessonId: options.lessonId, teacherId: options.teacherId, unitIds: options.unitIds, homeworkByUnit, idempotencyKey: options.idempotencyKey });
     delete state.teacherStudentCache[String(options.studentId)];
     delete $("modal").dataset.refreshTeacher;
     closeModal();
-    status("保存しました。画面を更新しています…");
+    status(`${correcting ? "訂正内容を" : ""}保存しました。画面を更新しています…`);
     await openView("selected");
   } catch (error) {
-    if (button) { button.disabled = false; button.textContent = "授業と宿題を保存"; }
+    if (button) { button.disabled = false; button.textContent = buttonLabel; }
     if ($("lessonSaveStatus")) $("lessonSaveStatus").textContent = error.message;
   }
 }
