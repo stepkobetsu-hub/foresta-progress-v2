@@ -10,6 +10,7 @@ import {
   makeHomework,
   normalizeGrade,
   normalizeSchool,
+  progressGroupKey,
   rangeKey,
   selectNextTest,
 } from "../domain.js";
@@ -50,5 +51,8 @@ assert.equal(formatProgressUnitNumber("数学", { chapter: "2", unitNumber: "2-1
 assert.equal(formatProgressGroupLabel("英語", "2"), "UNIT 2");
 assert.equal(formatProgressGroupLabel("数学", "2"), "第2章");
 assert.equal(formatProgressGroupLabel("英語", "[1年生] 9"), "1年生 UNIT 9");
+assert.equal(progressGroupKey({ chapter: "未区分", unitNumber: "プレステップ①", unitName: "アルファベット" }), "プレステップ");
+assert.equal(progressGroupKey({ chapter: "-", unitNumber: "プレステップ⑥", unitName: "いつ" }), "プレステップ");
+assert.equal(progressGroupKey({ chapter: "2", unitNumber: "Part1", unitName: "My Hero" }), "2");
 
-console.log("domain tests: 31 assertions passed");
+console.log("domain tests: 34 assertions passed");

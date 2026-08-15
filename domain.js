@@ -118,3 +118,9 @@ export function formatProgressGroupLabel(subject, chapter) {
   if (subject === "数学" && /^\d+$/u.test(value)) return `第${value}章`;
   return value;
 }
+
+export function progressGroupKey(unit = {}) {
+  const unitText = `${String(unit.unitNumber ?? "")} ${String(unit.unitName ?? "")}`.normalize("NFKC");
+  if (/プレステップ/u.test(unitText)) return "プレステップ";
+  return String(unit.chapter ?? "").trim() || "未区分";
+}
