@@ -41,4 +41,13 @@ assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: 
 assert.deepEqual(Array.from(context.homeworkItemsForUnit_("数学", { unitName: "KEY WORDS TEST", unitNumber: "Key Words TEST" }, ["TRYの赤×直し", "exercise"])), ["巻末のKeyWordsTestの暗記"]);
 assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: "About Me", unitNumber: "Part1" }, ["Try赤×直し", "exercise"])), ["Try赤×直し", "exercise"]);
 
-console.log("GAS pure tests: 27 assertions passed");
+context.loadSession_ = () => ({ role: "admin", loginId: "ADMIN", permission: 1 });
+context.requireAdmin_ = () => ({ role: "admin", loginId: "ADMIN", permission: 1 });
+context.getActiveStudent_ = (studentId) => ({ studentId });
+const adminProgressAccess = context.authorizeStudentAccess_({ token: "admin-token", adminToken: "admin-token", studentId: "S001" });
+assert.equal(adminProgressAccess.session.role, "admin");
+assert.equal(adminProgressAccess.student.studentId, "S001");
+context.requireAdmin_ = () => { throw new Error("FORBIDDEN"); };
+assert.throws(() => context.authorizeStudentAccess_({ token: "admin-token", adminToken: "invalid", studentId: "S001" }), /FORBIDDEN/);
+
+console.log("GAS pure tests: 30 assertions passed");

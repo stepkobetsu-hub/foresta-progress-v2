@@ -330,6 +330,10 @@ function authorizeStudentAccess_(data) {
   const session = loadSession_(data.token);
   let studentId = text_(data.studentId || session.studentId);
   if (session.role === 'student' && studentId !== session.studentId) throw new Error('FORBIDDEN');
+  if (session.role === 'admin') {
+    requireAdmin_(data);
+    return { session: session, student: getActiveStudent_(studentId) };
+  }
   if (['student', 'teacher'].indexOf(session.role) < 0) throw new Error('FORBIDDEN');
   return { session: session, student: getActiveStudent_(studentId) };
 }
