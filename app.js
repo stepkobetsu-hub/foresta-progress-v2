@@ -4,6 +4,7 @@ import { SUBJECTS, TRACKED_SUBJECTS, formatProgressGroupLabel, formatProgressUni
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 const fmtDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value)) : "未設定";
+const fmtShortDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" }).format(new Date(value)) : "";
 const fmtDateTime = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—";
 
 const state = {
@@ -13,6 +14,7 @@ const state = {
   adminToken: "",
   selectedStudents: [],
   activeStudentId: "",
+  teacherStudentCache: {},
   activeView: "home",
   dashboard: null,
 };
@@ -86,6 +88,7 @@ function clearSessions() {
   sessionStorage.removeItem("forestaTeacherAuth");
   state.session = null;
   state.adminToken = "";
+  state.teacherStudentCache = {};
 }
 
 function persistAdminSession() {
@@ -213,7 +216,7 @@ function renderScoresPage(data) {
 async function renderTeacher(view) {
   if (view === "today") return renderToday();
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
-  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・教室・学年・学校名から部分一致で検索できます。</p></div></header><article class="card"><div class="formGrid"><label class="span8"><span>検索</span><input id="studentSearch" class="field" placeholder="例：南城 中2 / 生徒名 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
+  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ）・教室・学年・学校名から検索できます。</p></div></header><article class="card"><div class="formGrid"><label class="span8"><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><button id="searchButton" class="primaryBtn" style="margin:12px 0">検索</button><div id="searchResults" class="searchResults"><div class="emptyState">検索条件を入力してください。</div></div></article>${selectedTabsHtml()}`;
   $("searchButton").onclick = runStudentSearch;
   $("studentSearch").onkeydown = (event) => { if (event.key === "Enter") runStudentSearch(); };
   bindSelectedTabs();
@@ -245,18 +248,31 @@ function selectedTabsHtml() {
 }
 
 function bindSelectedTabs() {
-  $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => { state.activeStudentId = button.dataset.id; openView("selected"); });
+  $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => activateTeacherStudent(button.dataset.id));
 }
 
-async function renderTeacherStudent(studentId) {
-  const data = await api("getStudentDashboard", { studentId });
+function activateTeacherStudent(studentId) {
+  state.activeStudentId = String(studentId);
+  state.activeView = "selected";
+  renderShell();
+  return renderTeacherStudent(state.activeStudentId);
+}
+
+async function renderTeacherStudent(studentId, { force = false } = {}) {
+  const requestedId = String(studentId);
+  let data = !force ? state.teacherStudentCache[requestedId] : null;
+  if (!data) {
+    loading();
+    data = await api("getStudentDashboard", { studentId: requestedId });
+    state.teacherStudentCache[requestedId] = data;
+  }
+  if (state.activeStudentId !== requestedId) return;
   state.dashboard = data;
   const next = data.nextTest;
   const summary = homeworkSummary(data.homework || []);
   const orderedSubjects = [...new Set([...(data.student.subjects || []), ...SUBJECTS])];
-  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow"><select id="lessonSubject" class="field">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><select id="lessonTeacher" class="field" aria-label="本日の担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select><button id="viewProgress" class="secondaryBtn">進行表を見る</button><button id="inputLesson" class="primaryBtn">本日の授業を入力</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6"><p class="cardTitle">前回宿題</p><p class="muted">生徒自己申告 ${summary.studentChecked}/${summary.total}　講師確認 ${summary.teacherChecked}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">英語・数学の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>英語</th><th>数学</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.eng)}</td><td>${esc(s.math)}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
+  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow lessonControls"><select id="lessonSubject" class="field" aria-label="科目">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><label class="teacherPicker"><span>担当講師</span><select id="lessonTeacher" class="field" aria-label="担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button id="inputLesson" class="primaryBtn">進行表を開く</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6"><p class="cardTitle">前回宿題</p><p class="muted">生徒自己申告 ${summary.studentChecked}/${summary.total}　講師確認 ${summary.teacherChecked}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">英語・数学の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>英語</th><th>数学</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.eng)}</td><td>${esc(s.math)}</td></tr>`).join("") || '<tr><td colspan="4">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
   bindSelectedTabs();
-  $("viewProgress").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "view", studentId });
   $("inputLesson").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "lesson", studentId, teacherId: $("lessonTeacher").value });
   $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
   $("saveComment").onclick = async () => { const text = $("teacherComment").value.trim(); if (!text) return; try { await api("saveComment", { studentId, subject: $("lessonSubject").value, text }); $("teacherComment").value = ""; status("コメントを保存しました。"); } catch (error) { status(error.message, true); } };
@@ -352,6 +368,8 @@ async function openProgress(options) {
     const data = await api(options.mode === "range" ? "getRangeEditor" : "getProgression", options, { silent: true });
     const editable = options.mode === "lesson" || options.mode === "range";
     const selected = new Set(options.unitIds || data.selectedUnitIds || []);
+    const todayValue = dateInputValue(new Date());
+    const todayLabel = fmtShortDate(new Date());
     let previousChapter = null;
     const rows = (data.units || []).map((u) => {
       const classes = [u.predictedOutside ? "predictedOutside" : "", u.decidedOutside ? "decidedOutside" : "", u.previous ? "previous" : "", u.schoolPosition ? "schoolPosition" : "", u.omittable ? "omittable" : ""].filter(Boolean).join(" ");
@@ -363,9 +381,14 @@ async function openProgress(options) {
       const displayNumber = formatProgressUnitNumber(options.subject, u);
       const chapterIsIncluded = options.subject === "英語" && displayNumber !== String(u.unitNumber ?? "").trim();
       const details = [chapterIsIncluded ? "" : u.chapter, u.difficulty ? `難度 ${u.difficulty}` : "", rangeLocked ? "中1・中2は範囲外" : ""].filter(Boolean).join(" / ");
-      return `${groupHeader}<label class="unitRow ${classes}"><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}><span class="unitNumber">${esc(displayNumber)}</span><span class="unitName"><strong>${esc(u.unitName)}</strong>${details ? `<br><small>${esc(details)}</small>` : ""}</span><span class="unitMeta">${u.learned ? `<span class="badge good">学習済 ${fmtDate(u.learnedAt)}</span>` : ""}${u.relearnedAt ? `<span class="badge">再学習 ${fmtDate(u.relearnedAt)}</span>` : ""}${u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
+      const lessonDates = (u.lessonDates || []).map((date) => fmtShortDate(date)).filter(Boolean);
+      const dateHistory = lessonDates.length ? `<span class="lessonDateHistory" title="授業日：${esc(lessonDates.join("、"))}"><small>授業日</small>${lessonDates.map((date) => `<b>${esc(date)}</b>`).join("")}</span>` : "";
+      const todayButton = options.mode === "lesson" && !rangeLocked ? `<button type="button" class="lessonDayToggle ${selected.has(u.unitId) ? "selected" : ""}" data-unit="${esc(u.unitId)}" aria-pressed="${selected.has(u.unitId) ? "true" : "false"}">${selected.has(u.unitId) ? "✓" : "＋"} 今日 ${esc(todayLabel)}</button>` : "";
+      const schoolButton = options.mode === "lesson" ? `<button type="button" class="schoolPinButton ${u.schoolPosition ? "active" : ""}" data-unit="${esc(u.unitId)}" aria-label="${esc(u.unitName)}を学校の現在地にする">${u.schoolPosition ? `🏫 学校 ${esc(fmtShortDate(u.schoolPositionAt))}` : "🏫"}</button>` : "";
+      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""}" data-unit="${esc(u.unitId)}"><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}><span class="unitNumber">${esc(displayNumber)}</span><span class="unitName"><strong>${esc(u.unitName)}</strong>${details ? `<br><small>${esc(details)}</small>` : ""}</span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
     }).join("");
-    $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p><div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span><span><i style="background:var(--school)"></i>学校位置</span></div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${options.mode === "lesson" ? '<button id="saveSchoolPosition" class="secondaryBtn">選択した1単元を学校位置に保存</button><button id="saveLesson" class="primaryBtn">今回進んだ単元を保存</button>' : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>'}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
+    const schoolGuide = options.mode === "lesson" ? `<div class="schoolPositionGuide"><div><strong>🏫 学校の現在地</strong><span>学校が現在ここまで進んでいる単元の「🏫」を押してください。</span></div><label><span>確認日</span><input id="schoolPositionDate" class="field" type="date" value="${esc(todayValue)}"></label><output id="schoolPositionStatus" aria-live="polite"></output></div>` : "";
+    $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p>${schoolGuide}<div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span><span><i style="background:var(--school)"></i>学校の現在地</span></div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${options.mode === "lesson" ? '<span class="toolbarHint">各単元右側の「＋ 今日」を押して授業日を付けます。</span><button id="saveLesson" class="primaryBtn">授業と宿題を保存</button>' : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>'}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
     const checks = [...$("modalBody").querySelectorAll(".unitCheck:not(:disabled)")];
     const groupToggles = [...$("modalBody").querySelectorAll(".chapterToggle")];
     const updateGroupToggles = () => groupToggles.forEach((toggle) => {
@@ -377,13 +400,43 @@ async function openProgress(options) {
       const groupCount = [...$("modalBody").querySelectorAll(".unitGroupCount")].find((item) => item.dataset.chapter === toggle.dataset.chapter);
       if (groupCount) groupCount.textContent = `${selectedCount}/${groupChecks.length}`;
     });
-    const count = () => { const el = $("selectedCount"); if (el) el.textContent = `${checks.filter((c) => c.checked).length}単元`; updateGroupToggles(); };
+    const syncLessonDayButtons = () => $("modalBody").querySelectorAll(".lessonDayToggle").forEach((button) => {
+      const check = checks.find((item) => item.value === button.dataset.unit);
+      const isSelected = Boolean(check?.checked);
+      button.classList.toggle("selected", isSelected);
+      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      button.textContent = `${isSelected ? "✓" : "＋"} 今日 ${todayLabel}`;
+      button.closest(".unitRow")?.classList.toggle("todaySelected", isSelected);
+    });
+    const count = () => { const el = $("selectedCount"); if (el) el.textContent = `${checks.filter((c) => c.checked).length}単元`; updateGroupToggles(); syncLessonDayButtons(); };
     checks.forEach((c) => c.onchange = count); count();
     if ($("selectAll")) $("selectAll").onclick = () => { checks.forEach((c) => c.checked = true); count(); };
     if ($("clearAll")) $("clearAll").onclick = () => { checks.forEach((c) => c.checked = false); count(); };
     groupToggles.forEach((toggle) => toggle.onchange = () => { checks.filter((check) => check.dataset.chapter === toggle.dataset.chapter).forEach((check) => check.checked = toggle.checked); count(); });
+    $("modalBody").querySelectorAll(".lessonDayToggle").forEach((button) => button.onclick = (event) => {
+      event.preventDefault();
+      const check = checks.find((item) => item.value === button.dataset.unit);
+      if (check) check.checked = !check.checked;
+      count();
+    });
+    $("modalBody").querySelectorAll(".schoolPinButton").forEach((button) => button.onclick = async (event) => {
+      event.preventDefault();
+      const recordedDate = $("schoolPositionDate").value;
+      button.disabled = true;
+      try {
+        const result = await api("saveSchoolPosition", { studentId: options.studentId, subject: options.subject, unitId: button.dataset.unit, recordedDate }, { silent: true });
+        $("modalBody").querySelectorAll(".schoolPinButton").forEach((item) => { item.classList.remove("active"); item.textContent = "🏫"; });
+        $("modalBody").querySelectorAll(".unitRow").forEach((row) => row.classList.remove("schoolPosition"));
+        button.classList.add("active");
+        button.textContent = `🏫 学校 ${fmtShortDate(result.recordedDate || recordedDate)}`;
+        button.closest(".unitRow")?.classList.add("schoolPosition");
+        $("schoolPositionStatus").textContent = `学校の現在地を${fmtShortDate(result.recordedDate || recordedDate)}で保存しました。`;
+        delete state.teacherStudentCache[String(options.studentId)];
+        $("modal").dataset.refreshTeacher = "true";
+      } catch (error) { $("schoolPositionStatus").textContent = error.message; }
+      finally { button.disabled = false; }
+    });
     if ($("saveRange")) $("saveRange").onclick = async () => { const unitIds = checks.filter((c) => c.checked).map((c) => c.value); if (!confirm(`${unitIds.length}単元を${options.rangeType}範囲として保存します。よろしいですか？`)) return; try { await api("saveRange", { ...options, unitIds }); closeModal(); status("学校別テスト範囲を保存しました。"); } catch (error) { status(error.message, true); } };
-    if ($("saveSchoolPosition")) $("saveSchoolPosition").onclick = async () => { const ids = checks.filter((c) => c.checked).map((c) => c.value); if (ids.length !== 1) return status("学校位置は1単元だけ選択してください。", true); try { await api("saveSchoolPosition", { studentId: options.studentId, subject: options.subject, unitId: ids[0] }); closeModal(); await openView("selected"); } catch (error) { status(error.message, true); } };
     if ($("saveLesson")) $("saveLesson").onclick = () => {
       const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
       if (!unitIds.length) return status("今回進んだ単元を選択してください。", true);
@@ -418,6 +471,8 @@ async function saveLessonWithHomework(options, homeworkItems) {
   if (button) button.disabled = true;
   try {
     await api("saveLesson", { studentId: options.studentId, subject: options.subject, teacherId: options.teacherId, unitIds: options.unitIds, homeworkItems, idempotencyKey: options.idempotencyKey });
+    delete state.teacherStudentCache[String(options.studentId)];
+    delete $("modal").dataset.refreshTeacher;
     closeModal();
     await openView("selected");
   } catch (error) {
@@ -432,7 +487,15 @@ function openCtForm(options, unitId) {
 }
 
 function showModal(html) { $("modalBody").innerHTML = html; if (!$("modal").open) $("modal").showModal(); }
-function closeModal() { if ($("modal").open) $("modal").close(); }
+function closeModal() {
+  const shouldRefreshTeacher = $("modal").dataset.refreshTeacher === "true";
+  delete $("modal").dataset.refreshTeacher;
+  if ($("modal").open) $("modal").close();
+  if (shouldRefreshTeacher && state.role === "teacher" && state.activeStudentId) {
+    delete state.teacherStudentCache[String(state.activeStudentId)];
+    renderTeacherStudent(state.activeStudentId, { force: true }).catch((error) => showError(error, () => renderTeacherStudent(state.activeStudentId, { force: true })));
+  }
+}
 
 function openAdminReauth() {
   const hasTeacherSession = Boolean(state.session && state.session.role === "teacher");

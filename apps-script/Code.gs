@@ -196,7 +196,7 @@ function resumeAdminSession_(data) {
 
 function getMasterRows_() { if(REQUEST_CACHE.masterRows)return REQUEST_CACHE.masterRows;return REQUEST_CACHE.masterRows=SpreadsheetApp.openById(CONFIG.MASTER_SPREADSHEET_ID).getSheetByName(CONFIG.MASTER_SHEET).getDataRange().getValues(); }
 function studentFromMasterRow_(row) {
-  return { studentId: text_(row[0]), status: text_(row[1]), name: text_(row[4]), campus: text_(row[7]), grade: normalizeGrade_(row[10]), school: text_(row[15]), schoolKey: normalizeSchool_(row[15]) };
+  return { studentId: text_(row[0]), status: text_(row[1]), name: text_(row[4]), reading: text_(row[5]), campus: text_(row[7]), grade: normalizeGrade_(row[10]), school: text_(row[15]), schoolKey: normalizeSchool_(row[15]) };
 }
 function getActiveStudents_() {
   if(REQUEST_CACHE.activeStudents)return REQUEST_CACHE.activeStudents;
@@ -245,7 +245,7 @@ function searchStudents_(data) {
     if (campus && normalizeText_(student.campus) !== campus) return false;
     if (grade && student.grade !== grade) return false;
     if (!query) return true;
-    const haystack = kanaFold_([student.studentId, student.name, student.campus, student.grade, student.school].join(' '));
+    const haystack = kanaFold_([student.studentId, student.name, student.reading, student.campus, student.grade, student.school].join(' '));
     return haystack.indexOf(query) >= 0;
   }).slice(0, 50);
   return { students: students };
@@ -345,7 +345,7 @@ function progressionFor_(student, subject, includeUnits) {
   if (nextTest && effective.size) { const target = new Date(nextTest.startDate); target.setDate(target.getDate() - 14); const days = Math.ceil((target.getTime() - new Date(todayKey_() + 'T00:00:00+09:00').getTime()) / 86400000); remainingLessons = Math.max(0, Math.ceil(days / 7)); required = remainingLessons > 0 ? Math.ceil(remainingUnits.length / remainingLessons) : null; urgent = remainingLessons <= 0 && remainingUnits.length > 0; }
   const summary = { subject: subject, textbook: source.textbook || '未設定', level: level || '', levelMissing: ['1','2','3'].indexOf(text_(level)) < 0, schoolUnitName: schoolUnit && schoolUnit.unitName, forestaUnitName: forestaUnit && forestaUnit.unitName, comparison: comparison, remaining: effective.size ? remainingUnits.length : null, remainingLessons: remainingLessons, requiredPerLesson: required, urgent: urgent, rangeType:decided.size?'決定':predicted.size?'予想':'', nextTest: nextTest };
   if (!includeUnits) return { summary: summary };
-  const decorated = units.map(function(unit) { const dates = dateMap[unit.unitId] || []; return Object.assign({}, unit, { omittable: omission_(unit.difficulty, level), learned: dates.length > 0, learnedAt: dates.length ? dates[0].toISOString() : '', relearnedAt: dates.length > 1 ? dates[dates.length - 1].toISOString() : '', previous: previousIds.has(unit.unitId), schoolPosition: unit.unitId === schoolUnitId, predictedOutside: predicted.size > 0 && !predicted.has(unit.unitId), decidedOutside: decided.size > 0 && !decided.has(unit.unitId), ctResult: ctMap[unit.unitId] || '' }); });
+  const decorated = units.map(function(unit) { const dates = dateMap[unit.unitId] || []; return Object.assign({}, unit, { omittable: omission_(unit.difficulty, level), learned: dates.length > 0, learnedAt: dates.length ? dates[0].toISOString() : '', relearnedAt: dates.length > 1 ? dates[dates.length - 1].toISOString() : '', lessonDates: dates.map(function(date){return date.toISOString();}), previous: previousIds.has(unit.unitId), schoolPosition: unit.unitId === schoolUnitId, schoolPositionAt: unit.unitId === schoolUnitId && schoolRows.length ? new Date(schoolRows[0]['登録日']).toISOString() : '', predictedOutside: predicted.size > 0 && !predicted.has(unit.unitId), decidedOutside: decided.size > 0 && !decided.has(unit.unitId), ctResult: ctMap[unit.unitId] || '' }); });
   return { title: student.grade + subject + ' / ' + (source.textbook || '進行表未登録'), units: decorated, selectedUnitIds: [], summary: summary };
 }
 
@@ -419,7 +419,7 @@ function saveRange_(data) {
   const lock=LockService.getScriptLock();lock.waitLock(30000);try{replaceRows_(sheetName,function(row){return text_(row['テストID'])===testId&&normalizeSchool_(row['学校名正規化キー'])===student.schoolKey&&normalizeGrade_(row['学年'])===student.grade&&text_(row['科目'])===subject;},objects);audit_(admin,'範囲保存',sheetName,testId,'成功',student.school+' '+student.grade+' '+subject+' '+type+' '+ids.length+'単元');}finally{lock.releaseLock();} return {saved:ids.length};
 }
 
-function saveSchoolPosition_(data) { const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),unitId=text_(data.unitId),source=unitsFor_(student,subject);if(!source.units.some(function(u){return u.unitId===unitId;}))throw new Error('INVALID_UNIT');appendObject_('学校進度履歴',{'学校進度ID':uuid_('SCHOOLPOS'),'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'登録日':new Date(),'授業ID':'','作成日時':new Date(),'更新日時':new Date(),'操作者ID':session.loginId,'操作者名':session.name});return{saved:true}; }
+function saveSchoolPosition_(data) { const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),unitId=text_(data.unitId),source=unitsFor_(student,subject);if(!source.units.some(function(u){return u.unitId===unitId;}))throw new Error('INVALID_UNIT');const rawDate=text_(data.recordedDate),recordedDate=/^\d{4}-\d{2}-\d{2}$/.test(rawDate)?new Date(rawDate+'T12:00:00+09:00'):new Date();if(Number.isNaN(recordedDate.getTime()))throw new Error('INVALID_VALUE');const now=new Date();appendObject_('学校進度履歴',{'学校進度ID':uuid_('SCHOOLPOS'),'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'登録日':recordedDate,'授業ID':'','作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});return{saved:true,recordedDate:recordedDate.toISOString()}; }
 
 function homeworkItemsForUnit_(subject, unit, items) {
   const label = normalizeText_((unit && unit.unitName || '') + (unit && unit.unitNumber || ''));
