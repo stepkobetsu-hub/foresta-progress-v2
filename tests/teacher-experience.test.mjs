@@ -26,5 +26,15 @@ assert.match(app, /class="studentTabClose"/);
 assert.match(app, /生徒を選び直しますか/);
 assert.match(app, /🏫 学校はここ/);
 assert.match(styles, /\.schoolPinButton\.active\{[^}]*background:#126fba/);
+assert.match(app, /class="scoreCorrectionMini"/);
+assert.match(app, /class="progressStudentName"/);
+assert.match(app, /class="unitHomeworkGroup"/);
+assert.match(app, /unitHomeworkPreset/);
+assert.match(app, /homeworkByUnit/);
+assert.match(app, /保存しています。画面を閉じずにお待ちください/);
+assert.match(app, /button\.textContent = "保存中…"/);
+assert.match(gas, /function appendObjects_/);
+assert.match(gas, /appendObjects_\('授業実施単元',lessonUnitRows\)/);
+assert.match(gas, /appendObjects_\('宿題',homeworkRows\)/);
 
-console.log("teacher experience tests: 21 assertions passed");
+console.log("teacher experience tests: 31 assertions passed");
