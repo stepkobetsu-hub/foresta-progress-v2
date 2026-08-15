@@ -13,6 +13,9 @@ assert.equal(context.activeStatus_(2), false);
 assert.equal(context.normalizeSchool_(" 南城 中学校 "), "南城中");
 assert.equal(context.normalizeGrade_("中学２年"), "中2");
 assert.equal(context.kanaFold_("タナカ　太郎"), "たなか太郎");
+assert.equal(context.romanizeKana_("カトウ ハナコ"), "katouhanako");
+assert.equal(context.romanizeKana_("ヤマモト エイスケ"), "yamamotoeisuke");
+assert.match(context.romajiSearchText_("カトウ ハナコ"), /katohanako/);
 const masterRow = Array(16).fill("");
 masterRow[0] = "S001";
 masterRow[1] = "1";
@@ -22,6 +25,11 @@ masterRow[7] = "神領";
 masterRow[10] = "中学2年";
 masterRow[15] = "南城中学校";
 assert.equal(context.studentFromMasterRow_(masterRow).reading, "カトウ ハナコ");
+assert.match(context.studentFromMasterRow_(masterRow).romaji, /katouhanako/);
+assert.equal(context.studentFromMasterRow_(masterRow).filterCampus, "神領");
+assert.equal(context.studentMatchesQuery_(context.studentFromMasterRow_(masterRow), "katou"), true);
+assert.equal(context.studentMatchesQuery_(context.studentFromMasterRow_(masterRow), "kato"), true);
+assert.equal(context.studentMatchesQuery_(context.studentFromMasterRow_(masterRow), "かとう 中2"), true);
 assert.equal(context.omission_("!", 1), true);
 assert.equal(context.omission_("!!", 1), true);
 assert.equal(context.omission_("!!", 2), true);
@@ -33,4 +41,4 @@ assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: 
 assert.deepEqual(Array.from(context.homeworkItemsForUnit_("数学", { unitName: "KEY WORDS TEST", unitNumber: "Key Words TEST" }, ["TRYの赤×直し", "exercise"])), ["巻末のKeyWordsTestの暗記"]);
 assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: "About Me", unitNumber: "Part1" }, ["Try赤×直し", "exercise"])), ["Try赤×直し", "exercise"]);
 
-console.log("GAS pure tests: 18 assertions passed");
+console.log("GAS pure tests: 27 assertions passed");

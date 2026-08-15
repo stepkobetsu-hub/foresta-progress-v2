@@ -109,6 +109,53 @@ function normalizeGrade_(value) {
 }
 function activeStatus_(value) { const status = text_(value); return status === '1' || status === '0'; }
 function kanaFold_(value) { return normalizeText_(value).replace(/[ァ-ヶ]/g, function(ch) { return String.fromCharCode(ch.charCodeAt(0) - 0x60); }); }
+function romanizeKana_(value) {
+  const source = kanaFold_(value);
+  const map = {
+    'きゃ':'kya','きゅ':'kyu','きょ':'kyo','ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo','しゃ':'sha','しゅ':'shu','しょ':'sho','じゃ':'ja','じゅ':'ju','じょ':'jo',
+    'ちゃ':'cha','ちゅ':'chu','ちょ':'cho','にゃ':'nya','にゅ':'nyu','にょ':'nyo','ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo','びゃ':'bya','びゅ':'byu','びょ':'byo',
+    'ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo','みゃ':'mya','みゅ':'myu','みょ':'myo','りゃ':'rya','りゅ':'ryu','りょ':'ryo','ふぁ':'fa','ふぃ':'fi','ふぇ':'fe','ふぉ':'fo',
+    'てぃ':'ti','でぃ':'di','うぃ':'wi','うぇ':'we','うぉ':'wo','ゔぁ':'va','ゔぃ':'vi','ゔぇ':'ve','ゔぉ':'vo',
+    'あ':'a','い':'i','う':'u','え':'e','お':'o','か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko','が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go',
+    'さ':'sa','し':'shi','す':'su','せ':'se','そ':'so','ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo','た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to',
+    'だ':'da','ぢ':'ji','づ':'zu','で':'de','ど':'do','な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no','は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho',
+    'ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo','ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po','ま':'ma','み':'mi','む':'mu','め':'me','も':'mo',
+    'や':'ya','ゆ':'yu','よ':'yo','ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro','わ':'wa','を':'o','ん':'n','ゔ':'vu','ぁ':'a','ぃ':'i','ぅ':'u','ぇ':'e','ぉ':'o'
+  };
+  let out = '', doubleNext = false;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === 'っ') { doubleNext = true; continue; }
+    if (char === 'ー') { const vowel = out.match(/[aeiou]$/); if (vowel) out += vowel[0]; continue; }
+    const pair = source.slice(index, index + 2);
+    let roman = map[pair];
+    if (roman) index++;
+    else roman = map[char] || (/^[a-z0-9]$/i.test(char) ? char.toLowerCase() : '');
+    if (doubleNext && roman && !/^[aeioun]/.test(roman)) out += roman[0];
+    doubleNext = false;
+    out += roman;
+  }
+  return out;
+}
+function romajiSearchText_(value) {
+  const roman = romanizeKana_(value);
+  const shortVowels = roman.replace(/ou/g, 'o').replace(/oo/g, 'o').replace(/ei/g, 'e');
+  const kunrei = roman.replace(/sha/g, 'sya').replace(/shu/g, 'syu').replace(/sho/g, 'syo').replace(/cha/g, 'tya').replace(/chu/g, 'tyu').replace(/cho/g, 'tyo').replace(/shi/g, 'si').replace(/chi/g, 'ti').replace(/tsu/g, 'tu').replace(/fu/g, 'hu').replace(/ji/g, 'zi');
+  return Array.from(new Set([roman, shortVowels, kunrei])).filter(Boolean).join(' ');
+}
+function studentMatchesQuery_(student, query) {
+  const tokens = String(query == null ? '' : query).normalize('NFKC').trim().split(/[\s　]+/).filter(Boolean);
+  if (!tokens.length) return true;
+  const nativeText = kanaFold_([student.studentId, student.name, student.reading, student.campus, student.grade, student.school].join(' '));
+  const romajiText = romajiSearchText_(student.reading || student.name);
+  return tokens.every(function(token) {
+    const nativeToken = kanaFold_(token);
+    if (nativeToken && nativeText.indexOf(nativeToken) >= 0) return true;
+    const latinToken = normalizeText_(token).replace(/[^a-z0-9]/g, '');
+    return !!latinToken && romajiText.split(' ').some(function(variant) { return variant.indexOf(latinToken) >= 0; });
+  });
+}
+function adminCampusLabel_(value) { const campus=text_(value); if(campus.indexOf('神領')>=0)return '神領'; if(campus.indexOf('大手')>=0)return '大手町'; return campus; }
 
 function digest_(token) {
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8)
@@ -198,7 +245,8 @@ function resumeAdminSession_(data) {
 
 function getMasterRows_() { if(REQUEST_CACHE.masterRows)return REQUEST_CACHE.masterRows;return REQUEST_CACHE.masterRows=SpreadsheetApp.openById(CONFIG.MASTER_SPREADSHEET_ID).getSheetByName(CONFIG.MASTER_SHEET).getDataRange().getValues(); }
 function studentFromMasterRow_(row) {
-  return { studentId: text_(row[0]), status: text_(row[1]), name: text_(row[4]), reading: text_(row[5]), campus: text_(row[7]), grade: normalizeGrade_(row[10]), school: text_(row[15]), schoolKey: normalizeSchool_(row[15]) };
+  const reading=text_(row[5]);
+  return { studentId: text_(row[0]), status: text_(row[1]), name: text_(row[4]), reading: reading, romaji: romajiSearchText_(reading), campus: text_(row[7]), filterCampus: adminCampusLabel_(row[7]), grade: normalizeGrade_(row[10]), school: text_(row[15]), schoolKey: normalizeSchool_(row[15]) };
 }
 function getActiveStudents_() {
   if(REQUEST_CACHE.activeStudents)return REQUEST_CACHE.activeStudents;
@@ -241,14 +289,12 @@ function subjectCacheMap_(){const map={};objects_('受講科目キャッシュ')
 
 function searchStudents_(data) {
   requireRole_(data, ['teacher']);
-  const query = kanaFold_(data.query), campus = normalizeText_(data.campus), grade = normalizeGrade_(data.grade);
+  const campus = normalizeText_(data.campus), grade = normalizeGrade_(data.grade);
   const source = getActiveStudents_();
   const students = source.filter(function(student) {
     if (campus && normalizeText_(student.campus) !== campus) return false;
     if (grade && student.grade !== grade) return false;
-    if (!query) return true;
-    const haystack = kanaFold_([student.studentId, student.name, student.reading, student.campus, student.grade, student.school].join(' '));
-    return haystack.indexOf(query) >= 0;
+    return studentMatchesQuery_(student, data.query);
   }).slice(0, 50);
   return { students: students };
 }
@@ -399,14 +445,16 @@ function getTeacherToday_(data) { const session = requireRole_(data, ['teacher']
 
 function getAdminDashboard_(data, all) {
   requireAdmin_(data);
-  const base = all ? getActiveStudents_() : todayScheduledStudents_(), subjectCache=subjectCacheMap_(), today = todayKey_(), lessons = objects_('授業記録').filter(function(row){return Utilities.formatDate(new Date(row['授業日']),CONFIG.TIME_ZONE,'yyyy-MM-dd')===today;}), lessonUnits = objects_('授業実施単元'), cts = objects_('CT記録'), trainings = objects_('特訓部屋対応'), comments = objects_('講師コメント'), reads = new Set(objects_('コメント既読管理').filter(function(r){return String(r['確認済み']).toUpperCase()!=='FALSE';}).map(function(r){return text_(r['コメントID']);}));
+  const allActiveStudents=getActiveStudents_(), base = all ? allActiveStudents : todayScheduledStudents_(), subjectCache=subjectCacheMap_(), today = todayKey_(), lessons = objects_('授業記録').filter(function(row){return Utilities.formatDate(new Date(row['授業日']),CONFIG.TIME_ZONE,'yyyy-MM-dd')===today;}), lessonUnits = objects_('授業実施単元'), cts = objects_('CT記録'), trainings = objects_('特訓部屋対応'), comments = objects_('講師コメント'), reads = new Set(objects_('コメント既読管理').filter(function(r){return String(r['確認済み']).toUpperCase()!=='FALSE';}).map(function(r){return text_(r['コメントID']);}));
   const students = base.map(function(student) {
     const mine = lessons.filter(function(row){return text_(row['生徒ID'])===student.studentId;}), ids = new Set(mine.map(function(row){return text_(row['授業ID']);})), units = lessonUnits.filter(function(row){return ids.has(text_(row['授業ID']));}), ct = cts.filter(function(row){return text_(row['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['実施日'])-new Date(a['実施日']);})[0], progress = TRACKED_SUBJECTS.map(function(s){return progressionFor_(student,s,false).summary;}).find(function(x){return x.remaining!=null;}) || {}, hw = homeworkFor_(student.studentId), hs = { total: hw.length, confirmed: hw.filter(function(x){return x.teacherChecked;}).length }, alerts = [];
     const studentTraining=trainings.filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['更新日時'])-new Date(a['更新日時']);})[0];
     if (!student.schoolKey) alerts.push('学校未登録'); if (student.school && !/^.*中(学校)?$/.test(student.school) && /^中[123]$/.test(student.grade)) alerts.push('学校名照合エラー'); if (!mine.length && !all) alerts.push('本日の記録未入力'); if (progress.comparison === '学校より遅れ' || progress.comparison === '学校と同じ') alerts.push(progress.comparison); if (progress.levelMissing) alerts.push('AO・AP未登録'); if (!progress.nextTest) alerts.push('次回テスト未登録'); if (progress.nextTest && progress.remaining==null) alerts.push('テスト範囲未登録'); if (ct && text_(ct['結果'])==='×') alerts.push('CT×'); if(studentTraining&&text_(studentTraining['対応状況'])!=='完了')alerts.push('特訓部屋未対応'); if (comments.some(function(c){return text_(c['生徒ID'])===student.studentId&&!reads.has(text_(c['コメントID']));})) alerts.push('未読コメント'); if (hs.confirmed < hs.total) alerts.push('宿題未完了');
     return Object.assign({}, student, { plannedSubjects: student.subjects || (subjectCache[student.studentId]&&subjectCache[student.studentId].subjects)||[], recordedSubjects: mine.map(function(r){return text_(r['科目']);}), actualTeachers:Array.from(new Set(mine.map(function(r){return text_(r['実担当講師名']);}).filter(Boolean))), learnedToday: new Set(units.map(function(r){return text_(r['単元ID']);})).size, remaining: progress.remaining, remainingLessons:progress.remainingLessons, requiredPerLesson:progress.requiredPerLesson, comparison:progress.comparison, ctResult: ct && text_(ct['結果']), trainingStatus:studentTraining&&text_(studentTraining['対応状況']), homeworkConfirmed: hs.confirmed, homeworkTotal: hs.total, alerts: alerts, updatedAt: mine.length ? mine[0]['更新日時'] : '' });
   });
-  return { students: students };
+  const schools=Array.from(new Set(allActiveStudents.map(function(student){return student.school;}).filter(Boolean))).sort();
+  const directory=allActiveStudents.map(function(student){return {studentId:student.studentId,name:student.name,reading:student.reading,romaji:student.romaji,campus:student.campus,filterCampus:student.filterCampus,grade:student.grade,school:student.school};});
+  return { students: students, directory:directory, filterOptions:{campuses:['神領','大手町'],grades:['中1','中2','中3'],schools:schools} };
 }
 
 function getAdminStudentDetail_(data){requireAdmin_(data);const student=getActiveStudent_(data.studentId),nextTest=nextTestFor_(student),lessons=objects_('授業記録').filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['授業日'])-new Date(a['授業日']);}),lessonUnits=objects_('授業実施単元').filter(function(r){return text_(r['生徒ID'])===student.studentId;}),unitMap={};objects_('単元マスタ').forEach(function(u){unitMap[text_(u['単元ID'])]=u;});const cts=objects_('CT記録').filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['実施日'])-new Date(a['実施日']);}),trainings=objects_('特訓部屋対応').filter(function(r){return text_(r['生徒ID'])===student.studentId;}),reads=new Set(objects_('コメント既読管理').filter(function(r){return String(r['確認済み']).toUpperCase()!=='FALSE';}).map(function(r){return text_(r['コメントID']);})),comments=objects_('講師コメント').filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['作成日時'])-new Date(a['作成日時']);}).map(function(r){return{commentId:text_(r['コメントID']),date:r['日付'],time:text_(r['時刻']),subject:text_(r['科目']),teacherName:text_(r['担当講師名']),text:text_(r['コメント本文']),read:reads.has(text_(r['コメントID']))};}),notes=objects_('生徒注意事項').filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return Number(b['版']||0)-Number(a['版']||0);}).map(function(r){return{text:text_(r['本文']),version:Number(r['版']||0),updatedAt:r['更新日時'],updatedBy:text_(r['操作者名'])};});return{student:student,nextTest:nextTest,targets:targetsFor_(student.studentId,nextTest&&nextTest.testId),scores:scoreHistory_(student.studentId),progress:TRACKED_SUBJECTS.map(function(s){return progressionFor_(student,s,false).summary;}),homework:homeworkFor_(student.studentId),lessons:lessons.map(function(r){const id=text_(r['授業ID']),units=lessonUnits.filter(function(u){return text_(u['授業ID'])===id;}).map(function(u){const master=unitMap[text_(u['単元ID'])]||{};return{unitId:text_(u['単元ID']),unitNumber:text_(master['単元番号']),unitName:text_(master['単元名']),date:u['実施日'],relearned:String(u['再学習']).toUpperCase()==='TRUE'};});return{lessonId:id,date:r['授業日'],subject:text_(r['科目']),teacherName:text_(r['実担当講師名']),units:units};}),schoolHistory:objects_('学校進度履歴').filter(function(r){return text_(r['生徒ID'])===student.studentId;}).sort(function(a,b){return new Date(b['登録日'])-new Date(a['登録日']);}).map(function(r){const u=unitMap[text_(r['単元ID'])]||{};return{date:r['登録日'],subject:text_(r['科目']),unitName:text_(u['単元名']),teacherName:text_(r['操作者名'])};}),cts:cts.map(function(r){const u=unitMap[text_(r['単元ID'])]||{},training=trainings.find(function(t){return text_(t['CTID'])===text_(r['CTID']);});return{date:r['実施日'],subject:text_(r['科目']),unitName:text_(u['単元名']),result:text_(r['結果']),teacherName:text_(r['担当講師名']),trainingStatus:training&&text_(training['対応状況'])};}),comments:comments,notes:notes};}
