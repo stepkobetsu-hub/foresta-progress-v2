@@ -52,5 +52,12 @@ assert.match(gas, /function getLessonCorrections_/);
 assert.match(gas, /function updateLessonCorrection_/);
 assert.match(gas, /replaceRows_\('授業実施単元'/);
 assert.match(gas, /replaceRows_\('宿題'/);
+assert.match(app, /<option>国語<\/option><option>英語<\/option><option>数学<\/option>/);
+assert.match(app, /options\.subject !== "国語" && u\.ctResult/);
+assert.match(app, /国語には決まった宿題項目はありません/);
+assert.match(app, /その他欄のみ/);
+assert.match(gas, /const TRACKED_SUBJECTS = \['国語', '英語', '数学'\]/);
+assert.match(gas, /subject==='国語'\|\|\['◎','〇','×'\]/);
+assert.match(gas, /\(subject === '英語' \|\| subject === '数学'\) && \['1','2','3'\]/);
 
-console.log("teacher experience tests: 47 assertions passed");
+console.log("teacher experience tests: 54 assertions passed");

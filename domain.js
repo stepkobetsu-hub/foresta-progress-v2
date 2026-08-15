@@ -1,5 +1,5 @@
 export const SUBJECTS = ["国語", "数学", "英語", "理科", "社会"];
-export const TRACKED_SUBJECTS = ["英語", "数学"];
+export const TRACKED_SUBJECTS = ["国語", "英語", "数学"];
 
 export function normalizeText(value) {
   return String(value ?? "").normalize("NFKC").replace(/[\s　]+/g, "").trim().toLowerCase();
