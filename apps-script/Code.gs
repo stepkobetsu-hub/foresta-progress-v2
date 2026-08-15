@@ -11,7 +11,6 @@ const CONFIG = Object.freeze({
   SESSION_PREFIX: 'FORESTA_SESSION_',
   SHARED_SESSION_HOURS: 8,
   PERSONAL_SESSION_DAYS: 30,
-  ADMIN_SESSION_MINUTES: 30,
 });
 
 const ACTIVE_SUBJECTS = ['国語', '数学', '英語', '理科', '社会'];
@@ -42,6 +41,7 @@ function route_(data) {
     case 'resumeSession': return resumeSession_(data);
     case 'logout': return logout_(data);
     case 'adminReauth': return adminReauth_(data);
+    case 'resumeAdminSession': return resumeAdminSession_(data);
     case 'searchStudents': return searchStudents_(data);
     case 'getStudentDashboard': return getStudentDashboard_(data);
     case 'getProgression': return getProgression_(data);
@@ -184,10 +184,14 @@ function adminReauth_(data) {
   const teacher = getActiveTeachers_().find(function(row) { return row.loginId === code; });
   if (!teacher || Number(teacher.permission || 0) < 1 || String(teacher.password || '') !== String(data.password || '') || code !== current.loginId) throw new Error('LOGIN_FAILED');
   const token = Utilities.getUuid() + '-' + Utilities.getUuid();
-  const expiry = Date.now() + CONFIG.ADMIN_SESSION_MINUTES * 60000;
-  const admin = { role: 'admin', loginId: teacher.loginId, name: teacher.name, campus: teacher.campus, permission: teacher.permission, expiresAt: new Date(expiry).toISOString(), issuedAt: nowIso_() };
+  const admin = { role: 'admin', loginId: teacher.loginId, name: teacher.name, campus: teacher.campus, permission: teacher.permission, deviceMode: 'personal', expiresAt: '9999-12-31T23:59:59.999Z', issuedAt: nowIso_() };
   PropertiesService.getScriptProperties().setProperty(CONFIG.SESSION_PREFIX + digest_(token), JSON.stringify(admin));
-  return { adminToken: token, expiresAt: admin.expiresAt };
+  return { adminToken: token, session: Object.assign({ token: token }, publicSession_(admin)), expiresAt: admin.expiresAt };
+}
+
+function resumeAdminSession_(data) {
+  const admin = requireAdmin_(data);
+  return { adminToken: String(data.adminToken || ''), session: Object.assign({ token: String(data.adminToken || '') }, publicSession_(admin)) };
 }
 
 function getMasterRows_() { if(REQUEST_CACHE.masterRows)return REQUEST_CACHE.masterRows;return REQUEST_CACHE.masterRows=SpreadsheetApp.openById(CONFIG.MASTER_SPREADSHEET_ID).getSheetByName(CONFIG.MASTER_SHEET).getDataRange().getValues(); }
@@ -417,10 +421,16 @@ function saveRange_(data) {
 
 function saveSchoolPosition_(data) { const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),unitId=text_(data.unitId),source=unitsFor_(student,subject);if(!source.units.some(function(u){return u.unitId===unitId;}))throw new Error('INVALID_UNIT');appendObject_('学校進度履歴',{'学校進度ID':uuid_('SCHOOLPOS'),'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'登録日':new Date(),'授業ID':'','作成日時':new Date(),'更新日時':new Date(),'操作者ID':session.loginId,'操作者名':session.name});return{saved:true}; }
 
+function homeworkItemsForUnit_(subject, unit, items) {
+  const label = normalizeText_((unit && unit.unitName || '') + (unit && unit.unitNumber || ''));
+  if (label.indexOf('keywordstest') >= 0) return ['巻末のKeyWordsTestの暗記'];
+  return (items || []).filter(function(item) { return item !== '巻末のKeyWordsTestの暗記'; });
+}
+
 function saveLesson_(data) {
   const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),source=unitsFor_(student,subject),valid=new Set(source.units.map(function(u){return u.unitId;})),ids=Array.from(new Set(data.unitIds||[])),key=text_(data.idempotencyKey);if(!key||!ids.length||ids.some(function(id){return!valid.has(id);}))throw new Error('INVALID_UNIT');const nextTest=nextTestFor_(student),predicted=rangeIds_('学校別予想テスト範囲',student,subject,nextTest&&nextTest.testId),decided=rangeIds_('学校別決定テスト範囲',student,subject,nextTest&&nextTest.testId),effective=decided.size?decided:predicted;if(student.grade!=='中3'&&effective.size&&ids.some(function(id){return!effective.has(id);}))throw new Error('OUTSIDE_TEST_RANGE');
   const candidateId=text_(data.teacherId)||session.loginId,candidate=getActiveTeachers_().find(function(t){return t.loginId===candidateId&&teacherMatchesCampus_(t.campus,student.campus);});if(!candidate)throw new Error('FORBIDDEN');
-  const allowed=subject==='英語'?['KeyWords「☆日→英」暗記','exercise「暗記マーク」暗記','Try赤×直し','exercise','宿題の赤×直し']:subject==='数学'?['TRYの赤×直し','exercise','宿題の赤×直し']:[],requested=Array.isArray(data.homeworkItems)?data.homeworkItems.map(text_):allowed,homeworkItems=Array.from(new Set(requested.filter(function(item){return allowed.indexOf(item)>=0||/^その他：.{1,120}$/u.test(item);})));const lock=LockService.getScriptLock();lock.waitLock(30000);try{const existing=objects_('授業記録').find(function(r){return text_(r['冪等キー'])===key;});if(existing)return{saved:true,lessonId:text_(existing['授業ID']),duplicatePrevented:true};const lessonId=uuid_('LESSON'),now=new Date(),prior=new Set(objects_('授業実施単元').filter(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject;}).map(function(r){return text_(r['単元ID']);}));appendObject_('授業記録',{'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'授業日':now,'予定担当講師ID':session.loginId,'予定担当講師名':session.name,'実担当講師ID':candidate.loginId,'実担当講師名':candidate.name,'冪等キー':key,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});ids.forEach(function(unitId){appendObject_('授業実施単元',{'授業単元ID':uuid_('LESSONUNIT'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'実施日':now,'再学習':prior.has(unitId),'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});createHomework_(lessonId,student,subject,unitId,homeworkItems,session,now);});audit_(session,'授業保存','授業記録',lessonId,'成功',ids.length+'単元');return{saved:true,lessonId:lessonId,unitCount:ids.length,homeworkCount:ids.length*homeworkItems.length};}finally{lock.releaseLock();}
+  const specialHomework='巻末のKeyWordsTestの暗記',allowed=subject==='英語'?['KeyWords「☆日→英」暗記','exercise「暗記マーク」暗記','Try赤×直し','exercise','宿題の赤×直し',specialHomework]:subject==='数学'?['TRYの赤×直し','exercise','宿題の赤×直し',specialHomework]:[],requested=Array.isArray(data.homeworkItems)?data.homeworkItems.map(text_):allowed,homeworkItems=Array.from(new Set(requested.filter(function(item){return allowed.indexOf(item)>=0||/^その他：.{1,120}$/u.test(item);}))),unitMap={};source.units.forEach(function(unit){unitMap[unit.unitId]=unit;});const lock=LockService.getScriptLock();lock.waitLock(30000);try{const existing=objects_('授業記録').find(function(r){return text_(r['冪等キー'])===key;});if(existing)return{saved:true,lessonId:text_(existing['授業ID']),duplicatePrevented:true};const lessonId=uuid_('LESSON'),now=new Date(),prior=new Set(objects_('授業実施単元').filter(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject;}).map(function(r){return text_(r['単元ID']);}));let homeworkCount=0;appendObject_('授業記録',{'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'授業日':now,'予定担当講師ID':session.loginId,'予定担当講師名':session.name,'実担当講師ID':candidate.loginId,'実担当講師名':candidate.name,'冪等キー':key,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});ids.forEach(function(unitId){const unitHomework=homeworkItemsForUnit_(subject,unitMap[unitId],homeworkItems);appendObject_('授業実施単元',{'授業単元ID':uuid_('LESSONUNIT'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'実施日':now,'再学習':prior.has(unitId),'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});createHomework_(lessonId,student,subject,unitId,unitHomework,session,now);homeworkCount+=unitHomework.length;});audit_(session,'授業保存','授業記録',lessonId,'成功',ids.length+'単元');return{saved:true,lessonId:lessonId,unitCount:ids.length,homeworkCount:homeworkCount};}finally{lock.releaseLock();}
 }
 function createHomework_(lessonId,student,subject,unitId,items,session,date){const due=new Date(date);due.setDate(due.getDate()+2);items.forEach(function(type){const other=/^その他：/u.test(type),key=lessonId+'|'+unitId+'|'+type;if(objects_('宿題').some(function(r){return text_(r['冪等キー'])===key;}))return;appendObject_('宿題',{'宿題ID':uuid_('HW'),'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'内容種別':other?'その他':type,'内容本文':type,'推奨完了日':due,'有効':true,'その他':other?type.replace(/^その他：/u,''):'','冪等キー':key,'作成日時':date,'更新日時':date,'操作者ID':session.loginId,'操作者名':session.name});});}
 

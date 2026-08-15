@@ -69,8 +69,11 @@ export function calculateProgress({ units, learnedUnitIds, rangeUnitIds, level, 
   };
 }
 
-export function makeHomework(subject, unitId, lessonDate) {
-  const base = subject === "英語"
+export function makeHomework(subject, unitId, lessonDate, unitName = "") {
+  const keyWordsTest = /key\s*words\s*test/iu.test(String(unitName));
+  const base = keyWordsTest
+    ? ["巻末のKeyWordsTestの暗記"]
+    : subject === "英語"
     ? ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"]
     : subject === "数学"
       ? ["TRYの赤×直し", "exercise", "宿題の赤×直し"]

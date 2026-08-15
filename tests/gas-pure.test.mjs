@@ -20,5 +20,8 @@ assert.equal(context.omission_("!", 2), false);
 assert.equal(context.omission_("!!", 3), false);
 assert.equal(context.omission_("!", ""), false);
 assert.equal(context.publicError_(new Error("LOGIN_FAILED")), "IDまたはパスワードを確認してください。");
+assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: "KEY WORDS TEST", unitNumber: "Key Words TEST" }, ["Try赤×直し", "exercise"])), ["巻末のKeyWordsTestの暗記"]);
+assert.deepEqual(Array.from(context.homeworkItemsForUnit_("数学", { unitName: "KEY WORDS TEST", unitNumber: "Key Words TEST" }, ["TRYの赤×直し", "exercise"])), ["巻末のKeyWordsTestの暗記"]);
+assert.deepEqual(Array.from(context.homeworkItemsForUnit_("英語", { unitName: "About Me", unitNumber: "Part1" }, ["Try赤×直し", "exercise"])), ["Try赤×直し", "exercise"]);
 
-console.log("GAS pure tests: 14 assertions passed");
+console.log("GAS pure tests: 17 assertions passed");

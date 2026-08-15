@@ -14,5 +14,10 @@ assert.match(app, /<h2>管理者ログイン<\/h2>/);
 assert.match(app, /api\("staffLogin"[\s\S]*api\("adminReauth"/);
 assert.match(app, /deviceMode: "shared"/);
 assert.match(app, /state\.role = "admin"/);
+assert.match(app, /両方そろうと自動でログインします/);
+assert.match(app, /setTimeout\(\(\) => adminForm\.requestSubmit\(\), 700\)/);
+assert.match(app, /persistAdminSession\(\)/);
+assert.match(app, /resumeAdminSession/);
+assert.match(app, /localStorage\.removeItem\(KEYS\.admin\)/);
 
-console.log("admin entry tests: 6 assertions passed");
+console.log("admin entry tests: 11 assertions passed");

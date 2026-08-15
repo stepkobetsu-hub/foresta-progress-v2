@@ -41,6 +41,8 @@ assert.notEqual(rangeKey({ testId: "t", school: "南城中", grade: "中2", subj
 assert.equal(selectNextTest([{ startDate: "2026-08-01", endDate: "2026-08-14" }, { startDate: "2026-09-01", endDate: "2026-09-02" }], new Date("2026-08-15")).startDate, "2026-09-01");
 assert.equal(makeHomework("数学", "u1", "2026-08-15").length, 3);
 assert.equal(makeHomework("英語", "u1", "2026-08-15").length, 5);
+assert.deepEqual(makeHomework("英語", "u-keywords", "2026-08-15", "KEY WORDS TEST").map((item) => item.contentType), ["巻末のKeyWordsTestの暗記"]);
+assert.deepEqual(makeHomework("数学", "u-keywords", "2026-08-15", "Key Words TEST").map((item) => item.contentType), ["巻末のKeyWordsTestの暗記"]);
 assert.equal(comparePositions(3, 4), "学校より先");
 assert.deepEqual(homeworkSummary([{ studentChecked: true, teacherChecked: false }, { studentChecked: true, teacherChecked: true }]), { total: 2, studentChecked: 2, teacherChecked: 1 });
 assert.equal(formatProgressUnitNumber("英語", { chapter: "2", unitNumber: "Part1" }), "2-Part1");
@@ -49,4 +51,4 @@ assert.equal(formatProgressGroupLabel("英語", "2"), "UNIT 2");
 assert.equal(formatProgressGroupLabel("数学", "2"), "第2章");
 assert.equal(formatProgressGroupLabel("英語", "[1年生] 9"), "1年生 UNIT 9");
 
-console.log("domain tests: 29 assertions passed");
+console.log("domain tests: 31 assertions passed");
