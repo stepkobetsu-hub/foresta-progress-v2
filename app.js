@@ -207,7 +207,7 @@ function studentRoundProgressHtml(data) {
   const overallPercent = totalTarget ? Math.round(totalDone / totalTarget * 100) : 0;
   const roundBars = roundCounts.map((count, index) => {
     const pct = totalTarget ? Math.round(count / totalTarget * 100) : 0;
-    return `<div class="roundProgressLine"><span>${index + 1}周目</span><i><b style="width:${Math.min(100, pct)}%"></b></i><strong>${pct}%</strong></div>`;
+    return `<div class="roundProgressLine round${index + 1}"><span>${index + 1}周目</span><i><b style="width:${Math.min(100, pct)}%"></b></i><strong>${pct}%</strong></div>`;
   }).join("");
   const subjectBars = rows.map((row) => {
     const target = Number(row.roundProgress.targetCount || 0);
@@ -257,7 +257,7 @@ async function renderStudent(view) {
       ${metricCard("テストまで", next ? `${next.daysUntil}日` : "未設定", next ? "日本時間で計算" : "", next?.daysUntil <= 14 ? "alert" : "")}
       ${metricCard("学校との比較", p.comparison || "未設定", p.subject || "英語・数学から選択", p.comparison === "学校より先" ? "" : "alert")}
       <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
-      <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
+      <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article>
     </section>`;
   const studentProgressMode = data.capabilities?.studentRoundInput ? "student" : "view";
   $("content").querySelectorAll(".progressionButton").forEach((button) => {
@@ -283,7 +283,7 @@ function studentHomeworkCardsHtml(items) {
   });
   return [...groups.values()].map((group) => {
     const subject = group.subject || "宿題";
-    const tasks = group.items.map((item) => `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}"><strong>${esc(item.contentText || item.contentType)}</strong><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済み" : item.studentChecked ? "保存済み・先生の確認待ち" : "変更すると自動保存"}</small></label>`).join("");
+    const tasks = group.items.map((item) => { const taskText = item.contentText || item.contentType; return `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}" title="${esc(taskText)}"><strong>${esc(taskText)}</strong><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済" : item.studentChecked ? "保存済" : "自動保存"}</small></span></label>`; }).join("");
     return `<article class="studentHomeworkCard ${subjectProgressClass(subject)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
   }).join("");
 }
@@ -314,7 +314,7 @@ function bindHomeworkChecks() {
     try {
       await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: nextChecked });
       state.dashboard = null;
-      if (saveState) saveState.textContent = nextChecked ? "保存済み・先生の確認待ち" : "保存済み";
+      if (saveState) saveState.textContent = "保存済";
       const actionLabel = item?.querySelector(".studentTaskAction b");
       if (actionLabel) actionLabel.textContent = "チェック";
       input.disabled = false;
@@ -607,13 +607,24 @@ async function openLessonCorrection(studentId) {
 
 async function askOutsideRange_() {
   return new Promise((resolve) => {
-    const layer = document.createElement("div");
-    layer.className = "outsideConfirmLayer";
-    layer.innerHTML = '<div class="outsideConfirmBox"><span>⚠</span><h3>次回テスト範囲外です</h3><p>この単元は管理者が設定した次回テスト範囲の外です。それでも実際に進みましたか？</p><div><button class="primaryBtn" data-answer="yes">それでもすすみました</button><button class="ghostBtn" data-answer="no">いいえ</button></div></div>';
-    const finish = (value) => { layer.remove(); resolve(value); };
-    layer.querySelector('[data-answer="yes"]').onclick = () => finish(true);
-    layer.querySelector('[data-answer="no"]').onclick = () => finish(false);
-    document.body.appendChild(layer);
+    const dialog = document.createElement("dialog");
+    dialog.className = "outsideConfirmDialog";
+    dialog.innerHTML = '<div class="outsideConfirmBox"><span>⚠</span><h3>次回テスト範囲外です</h3><p>この単元は管理者が設定した次回テスト範囲の外です。それでも実際に進みましたか？</p><div><button class="primaryBtn" data-answer="yes">それでもすすみました</button><button class="ghostBtn" data-answer="no">いいえ</button></div></div>';
+    let finished = false;
+    const finish = (value) => {
+      if (finished) return;
+      finished = true;
+      try { if (dialog.open) dialog.close(); } catch {}
+      dialog.remove();
+      resolve(value);
+    };
+    dialog.querySelector('[data-answer="yes"]').onclick = () => finish(true);
+    dialog.querySelector('[data-answer="no"]').onclick = () => finish(false);
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) finish(false); });
+    document.body.appendChild(dialog);
+    try { dialog.showModal(); }
+    catch { dialog.setAttribute("open", ""); }
   });
 }
 
@@ -691,7 +702,7 @@ async function openProgress(options) {
       const schoolButton = options.mode === "lesson" ? `<button type="button" class="schoolPinButton ${u.schoolPosition ? "active" : ""}" data-unit="${esc(u.unitId)}" aria-label="${esc(u.unitName)}を学校の現在地にする">${u.schoolPosition ? `🏫 学校 ${esc(fmtShortDate(u.schoolPositionAt))}` : "🏫"}</button>` : "";
       if (options.mode === "student") {
         const rounds = [1, 2, 3].map((roundNumber) => (u.rounds || []).find((item) => Number(item.roundNumber) === roundNumber) || { roundNumber, completed: false, date: "" });
-        const roundHtml = rounds.map((round) => `<label class="studentRoundCell"><span>${round.roundNumber}周目</span><input class="studentRoundInput" type="checkbox" data-round="${round.roundNumber}" data-outside="${effectiveOutside ? "true" : "false"}" ${round.completed ? "checked" : ""}><small data-round-date="${round.roundNumber}" data-saved="${round.completed ? esc(fmtShortDate(round.date)) : "未"}">${round.completed ? esc(fmtShortDate(round.date)) : "未"}</small></label>`).join("");
+        const roundHtml = rounds.map((round) => `<label class="studentRoundCell round${round.roundNumber}"><span>${round.roundNumber}周目</span><input class="studentRoundInput" type="checkbox" data-round="${round.roundNumber}" data-outside="${effectiveOutside ? "true" : "false"}" ${round.completed ? "checked" : ""}><small data-round-date="${round.roundNumber}" data-saved="${round.completed ? esc(fmtShortDate(round.date)) : "未"}">${round.completed ? esc(fmtShortDate(round.date)) : "未"}</small></label>`).join("");
         return `<div class="unitRow studentRoundRow ${classes}" data-unit="${esc(u.unitId)}"><span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="studentRoundCells">${roundHtml}</span></div>`;
       }
       const unitDisabled = editable && (!rangeLocked || canOutsideOverride) ? "" : "disabled";

@@ -87,3 +87,33 @@
 /* 2026-08-23: no-login-flash restore + target near top */
 .bootCover{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#edf7f3,#fff);display:grid;place-items:center}.bootCover>div{display:grid;justify-items:center;gap:10px;color:var(--forest2);font-weight:900}.bootCover small{color:var(--muted);font-weight:700}.booting .loginLayout,.booting .workspace{visibility:hidden}.studentTargetTop{margin:0 0 16px;width:min(520px,100%)}
 @media(max-width:620px){.studentTargetTop{width:100%}}
+
+
+/* 2026-08-23: compact homework, visible range confirmation, weighted rounds */
+.roundProgressLine.round1 i{height:14px}
+.roundProgressLine.round1 span,.roundProgressLine.round1 strong{font-size:.78rem}
+.roundProgressLine.round2 i,.roundProgressLine.round3 i{height:5px}
+.roundProgressLine.round2,.roundProgressLine.round3{opacity:.88;font-size:.66rem}
+.studentRoundCells{grid-template-columns:minmax(126px,1.45fr) 82px 82px!important;justify-content:start;max-width:350px;margin-right:auto}
+.studentRoundCell.round1{padding-inline:10px}
+.studentRoundCell.round2,.studentRoundCell.round3{grid-template-columns:1fr;justify-items:center;gap:2px;padding:5px 4px}
+.studentRoundCell.round2 span,.studentRoundCell.round3 span{font-size:.6rem}
+.studentRoundCell.round2 input,.studentRoundCell.round3 input{width:17px;height:17px}
+.studentRoundCell.round2 small,.studentRoundCell.round3 small{font-size:.56rem}
+.outsideConfirmDialog{border:0;padding:0;background:transparent;max-width:none;max-height:none}
+.outsideConfirmDialog::backdrop{background:rgba(14,31,28,.68);backdrop-filter:blur(3px)}
+.outsideConfirmDialog .outsideConfirmBox{margin:0}
+.studentHomeworkTasks{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.studentHomeworkTask{grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;min-height:46px!important;padding:6px 8px!important;gap:7px!important}
+.studentHomeworkTask>strong{font-size:.68rem!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.studentTaskRight{display:flex;align-items:center;justify-content:flex-end;gap:7px;white-space:nowrap}
+.studentTaskAction{gap:4px!important}
+.studentTaskAction input{width:17px!important;height:17px!important}
+.studentTaskAction b{font-size:.61rem!important}
+.homeworkSaveState{font-size:.56rem!important;white-space:nowrap}
+.studentHomeworkCard{padding:9px 10px!important;gap:9px!important}
+.studentHomeworkMeta{gap:3px!important}
+.studentHomeworkMeta>strong{font-size:.78rem!important}
+.studentHomeworkMeta>small{font-size:.61rem!important}
+@media(max-width:1050px){.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))}.studentRoundCells{grid-template-columns:minmax(112px,1.35fr) 76px 76px!important;max-width:320px}}
+@media(max-width:700px){.studentHomeworkTasks{grid-template-columns:1fr}.studentRoundCells{grid-template-columns:minmax(108px,1fr) 72px 72px!important;max-width:100%}}
