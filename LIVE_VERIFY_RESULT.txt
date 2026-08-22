@@ -1,0 +1,5 @@
+result=THREE_ROUND_DEPLOYED
+checked_at=2026-08-22T16:39:54Z
+get={"ok":true,"app":"フォレスタ進捗管理","version":"2.0.0","time":"2026-08-23T01:39:52+09:00"}
+health={"ok":true,"status":"ready","timeZone":"Asia/Tokyo"}
+round={"ok":false,"message":"ログインの有効期限が切れました。もう一度ログインしてください。"}
