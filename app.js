@@ -24,6 +24,8 @@ const state = {
   teacherStudentCache: {},
   activeView: "home",
   dashboard: null,
+  progressionCache: new Map(),
+  progressionPromises: new Map(),
 };
 
 const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode" };
@@ -32,6 +34,49 @@ const DEFAULT_HOMEWORK = {
   英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
 };
 let teacherSearchTimer = 0;
+const PROGRESSION_CACHE_TTL_MS = 120000;
+
+function progressionCacheKey(options = {}) {
+  if (options.mode === "range") return ["range", options.school || "", options.grade || "", options.subject || "", options.testId || "", options.rangeType || ""].join("|");
+  const studentId = options.studentId || state.dashboard?.student?.studentId || state.session?.studentId || state.session?.loginId || "self";
+  return ["progress", studentId, options.subject || ""].join("|");
+}
+
+function readProgressionCache(options) {
+  const entry = state.progressionCache.get(progressionCacheKey(options));
+  if (!entry || Date.now() - entry.savedAt > PROGRESSION_CACHE_TTL_MS) return null;
+  return entry.data;
+}
+
+function writeProgressionCache(options, data) {
+  state.progressionCache.set(progressionCacheKey(options), { data, savedAt: Date.now() });
+  return data;
+}
+
+function invalidateProgressionCache(options = {}) {
+  const key = progressionCacheKey(options);
+  state.progressionCache.delete(key);
+  state.progressionPromises.delete(key);
+}
+
+async function loadProgression(options, { force = false } = {}) {
+  const key = progressionCacheKey(options);
+  if (!force) {
+    const cached = readProgressionCache(options);
+    if (cached) return cached;
+    if (state.progressionPromises.has(key)) return state.progressionPromises.get(key);
+  }
+  const action = options.mode === "range" ? "getRangeEditor" : "getProgression";
+  const request = api(action, options, { silent: true })
+    .then((data) => writeProgressionCache(options, data))
+    .finally(() => state.progressionPromises.delete(key));
+  state.progressionPromises.set(key, request);
+  return request;
+}
+
+function prefetchProgression(options) {
+  loadProgression(options).catch(() => {});
+}
 
 async function api(action, payload = {}, { silent = false } = {}) {
   if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");
@@ -141,7 +186,7 @@ function adminRangeCta() {
 }
 
 async function renderStudent(view) {
-  const data = await api("getStudentDashboard");
+  const data = state.dashboard || await api("getStudentDashboard");
   state.dashboard = data;
   if (view === "homework") return renderHomeworkPage(data);
   if (view === "scores") return renderScoresPage(data);
@@ -157,7 +202,13 @@ async function renderStudent(view) {
       <article class="card span6"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
       <article class="card span6"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
     </section>`;
-  $("content").querySelectorAll(".progressionButton").forEach((button) => button.onclick = () => openProgress({ subject: button.dataset.subject, mode: "view" }));
+  $("content").querySelectorAll(".progressionButton").forEach((button) => {
+    const options = { subject: button.dataset.subject, mode: "view" };
+    button.onclick = () => openProgress(options);
+    button.onpointerenter = () => prefetchProgression(options);
+    button.onfocus = () => prefetchProgression(options);
+  });
+  TRACKED_SUBJECTS.forEach((subject, index) => setTimeout(() => prefetchProgression({ subject, mode: "view" }), index * 120));
   bindTargetForm(next?.testId);
   bindHomeworkChecks();
 }
@@ -180,7 +231,7 @@ function renderHomeworkPage(data) {
 function bindHomeworkChecks() {
   $("content").querySelectorAll(".homeworkCheck:not(:disabled)").forEach((input) => input.onchange = async () => {
     input.disabled = true;
-    try { await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: input.checked }); await openView(state.activeView); }
+    try { await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: input.checked }); state.dashboard = null; await openView(state.activeView); }
     catch (error) { input.checked = !input.checked; input.disabled = false; status(error.message, true); }
   });
 }
@@ -210,7 +261,7 @@ function bindTargetForm(testId) {
   form.onsubmit = async (event) => {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(form));
-    try { await api("saveTargets", { testId, values }); status("目標点を保存しました。"); }
+    try { await api("saveTargets", { testId, values }); state.dashboard = null; status("目標点を保存しました。"); }
     catch (error) { status(error.message, true); }
   };
 }
@@ -282,7 +333,10 @@ function activateTeacherStudent(studentId) {
   state.activeStudentId = String(studentId);
   state.activeView = "selected";
   renderShell();
-  return renderTeacherStudent(state.activeStudentId);
+  return renderTeacherStudent(state.activeStudentId).then(() => {
+    const button = $("inputLesson");
+    if (button) button.click();
+  });
 }
 
 async function renderTeacherStudent(studentId, { force = false } = {}) {
@@ -305,6 +359,9 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   if (testHistoryTitle) testHistoryTitle.insertAdjacentHTML("beforeend", ` <a class="scoreCorrectionMini" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a>`);
   $("inputLesson").insertAdjacentHTML("afterend", '<button id="correctLesson" class="ghostBtn compactCorrectionButton" type="button">宿題・進行表を訂正</button>');
   bindSelectedTabs();
+  const prefetchCurrentProgression = () => prefetchProgression({ subject: $("lessonSubject").value, mode: "lesson", studentId });
+  $("lessonSubject").onchange = prefetchCurrentProgression;
+  prefetchCurrentProgression();
   $("inputLesson").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "lesson", studentId, teacherId: $("lessonTeacher").value });
   $("correctLesson").onclick = () => openLessonCorrection(studentId);
   $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
@@ -426,9 +483,12 @@ async function openLessonCorrection(studentId) {
 }
 
 async function openProgress(options) {
-  showModal('<div class="loadingCard"><span class="spinner"></span><p>進行表を読み込み中です…</p></div>');
+  const cachedProgression = options.mode === "correction" ? null : readProgressionCache(options);
+  showModal(cachedProgression ? '<div class="loadingCard fastLoad"><span class="spinner"></span><p>進行表を表示しています…</p></div>' : '<div class="loadingCard"><span class="spinner"></span><p>進行表を読み込み中です…</p></div>');
   try {
-    const data = await api(options.mode === "range" ? "getRangeEditor" : "getProgression", options, { silent: true });
+    const data = options.mode === "correction"
+      ? await loadProgression(options, { force: true })
+      : cachedProgression || await loadProgression(options);
     const editable = options.mode === "lesson" || options.mode === "correction" || options.mode === "range";
     const selected = new Set(options.unitIds || data.selectedUnitIds || []);
     const todayValue = dateInputValue(new Date());
@@ -448,18 +508,54 @@ async function openProgress(options) {
       const dateHistory = lessonDates.length ? `<span class="lessonDateHistory" title="授業日：${esc(lessonDates.join("、"))}"><small>授業日</small>${lessonDates.map((date) => `<b>${esc(date)}</b>`).join("")}</span>` : "";
       const todayButton = (options.mode === "lesson" || options.mode === "correction") && !rangeLocked ? `<button type="button" class="lessonDayToggle ${selected.has(u.unitId) ? "selected" : ""}" data-unit="${esc(u.unitId)}" aria-pressed="${selected.has(u.unitId) ? "true" : "false"}">${options.mode === "correction" ? (selected.has(u.unitId) ? "✓ 記録済み" : "＋ 追加") : `${selected.has(u.unitId) ? "✓" : "＋"} 今日 ${esc(todayLabel)}`}</button>` : "";
       const schoolButton = options.mode === "lesson" ? `<button type="button" class="schoolPinButton ${u.schoolPosition ? "active" : ""}" data-unit="${esc(u.unitId)}" aria-label="${esc(u.unitName)}を学校の現在地にする">${u.schoolPosition ? `🏫 学校 ${esc(fmtShortDate(u.schoolPositionAt))}` : "🏫"}</button>` : "";
-      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""}" data-unit="${esc(u.unitId)}"><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}><span class="unitNumber">${esc(displayNumber)}</span><span class="unitName"><strong>${esc(u.unitName)}</strong>${details ? `<br><small>${esc(details)}</small>` : ""}</span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${options.subject !== "国語" && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : options.subject !== "国語" && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
+      const checkHtml = options.mode === "range" ? `<span class="rangeCheckCell"><small>${options.rangeType === "決定" ? "決定範囲" : "予想範囲"}</small><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}></span>` : `<input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" ${editable && !rangeLocked ? "" : "disabled"} ${selected.has(u.unitId) ? "checked" : ""}>`;
+      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""} ${options.mode === "range" ? "rangeSelectable" : ""}" data-unit="${esc(u.unitId)}">${checkHtml}<span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${options.subject !== "国語" && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : options.subject !== "国語" && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
     }).join("");
     const schoolLegend = options.mode === "lesson" ? `<span class="schoolLegendControl"><i style="background:var(--school)"></i><b>学校の現在地</b><small>単元右の🏫を押す</small><input id="schoolPositionDate" type="date" value="${esc(todayValue)}" aria-label="学校進度の確認日"><output id="schoolPositionStatus" aria-live="polite"></output></span>` : '<span><i style="background:var(--school)"></i>学校の現在地</span>';
     const progressActions = options.mode === "lesson"
       ? '<span class="toolbarHint">各単元右側の「＋ 今日」を押して授業日を付けます。</span><button id="saveLesson" class="primaryBtn">授業と宿題を保存</button>'
       : options.mode === "correction"
         ? '<span class="toolbarHint">記録した単元を選び直してください。</span><button id="saveLesson" class="primaryBtn">宿題設定へ</button>'
-        : '<button id="saveRange" class="primaryBtn">選択範囲を保存</button>';
+        : '<span class="toolbarHint">チェック変更は自動保存されます。</span><span id="rangeAutoSave" class="rangeAutoSave">すべて保存済み</span><button id="saveRange" class="ghostBtn compactManualSave" type="button">今すぐ保存</button>';
     $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p><div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span>${schoolLegend}</div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${progressActions}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
     if ((options.mode === "lesson" || options.mode === "correction") && $("selectedCount") && state.dashboard?.student?.name) $("selectedCount").insertAdjacentHTML("afterend", `<strong class="progressStudentName">${esc(state.dashboard.student.name)}さん</strong>`);
     const checks = [...$("modalBody").querySelectorAll(".unitCheck:not(:disabled)")];
     const groupToggles = [...$("modalBody").querySelectorAll(".chapterToggle")];
+    const rangeMode = options.mode === "range";
+    let rangeSaveTimer = 0;
+    let rangeSaving = false;
+    let rangeDirty = false;
+    const rangeStatus = () => $("rangeAutoSave");
+    const saveRangeSelection = async () => {
+      if (!rangeMode) return;
+      if (rangeSaving) { rangeDirty = true; return; }
+      clearTimeout(rangeSaveTimer);
+      rangeSaving = true;
+      rangeDirty = false;
+      const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
+      if (rangeStatus()) rangeStatus().textContent = "自動保存中…";
+      try {
+        await api("saveRange", { ...options, unitIds }, { silent: true });
+        invalidateProgressionCache(options);
+        if (rangeStatus()) rangeStatus().textContent = "自動保存済み";
+      } catch (error) {
+        if (rangeStatus()) rangeStatus().textContent = "保存失敗・再試行してください";
+        status(error.message, true);
+      } finally {
+        rangeSaving = false;
+        if (rangeDirty) {
+          rangeDirty = false;
+          rangeSaveTimer = setTimeout(saveRangeSelection, 80);
+        }
+      }
+    };
+    const scheduleRangeSave = () => {
+      if (!rangeMode) return;
+      rangeDirty = true;
+      clearTimeout(rangeSaveTimer);
+      if (rangeStatus()) rangeStatus().textContent = "自動保存待ち…";
+      rangeSaveTimer = setTimeout(() => { rangeDirty = false; saveRangeSelection(); }, 450);
+    };
     const updateGroupToggles = () => groupToggles.forEach((toggle) => {
       const groupChecks = checks.filter((check) => check.dataset.chapter === toggle.dataset.chapter);
       const selectedCount = groupChecks.filter((check) => check.checked).length;
@@ -478,10 +574,10 @@ async function openProgress(options) {
       button.closest(".unitRow")?.classList.toggle("todaySelected", isSelected);
     });
     const count = () => { const el = $("selectedCount"); if (el) el.textContent = `${checks.filter((c) => c.checked).length}単元`; updateGroupToggles(); syncLessonDayButtons(); };
-    checks.forEach((c) => c.onchange = count); count();
-    if ($("selectAll")) $("selectAll").onclick = () => { checks.forEach((c) => c.checked = true); count(); };
-    if ($("clearAll")) $("clearAll").onclick = () => { checks.forEach((c) => c.checked = false); count(); };
-    groupToggles.forEach((toggle) => toggle.onchange = () => { checks.filter((check) => check.dataset.chapter === toggle.dataset.chapter).forEach((check) => check.checked = toggle.checked); count(); });
+    checks.forEach((c) => c.onchange = () => { count(); scheduleRangeSave(); }); count();
+    if ($("selectAll")) $("selectAll").onclick = () => { checks.forEach((c) => c.checked = true); count(); scheduleRangeSave(); };
+    if ($("clearAll")) $("clearAll").onclick = () => { checks.forEach((c) => c.checked = false); count(); scheduleRangeSave(); };
+    groupToggles.forEach((toggle) => toggle.onchange = () => { checks.filter((check) => check.dataset.chapter === toggle.dataset.chapter).forEach((check) => check.checked = toggle.checked); count(); scheduleRangeSave(); });
     $("modalBody").querySelectorAll(".lessonDayToggle").forEach((button) => button.onclick = (event) => {
       event.preventDefault();
       const check = checks.find((item) => item.value === button.dataset.unit);
@@ -494,6 +590,7 @@ async function openProgress(options) {
       button.disabled = true;
       try {
         const result = await api("saveSchoolPosition", { studentId: options.studentId, subject: options.subject, unitId: button.dataset.unit, recordedDate }, { silent: true });
+        invalidateProgressionCache(options);
         $("modalBody").querySelectorAll(".schoolPinButton").forEach((item) => { item.classList.remove("active"); item.textContent = "🏫"; });
         $("modalBody").querySelectorAll(".unitRow").forEach((row) => row.classList.remove("schoolPosition"));
         button.classList.add("active");
@@ -505,7 +602,7 @@ async function openProgress(options) {
       } catch (error) { $("schoolPositionStatus").textContent = error.message; }
       finally { button.disabled = false; }
     });
-    if ($("saveRange")) $("saveRange").onclick = async () => { const unitIds = checks.filter((c) => c.checked).map((c) => c.value); if (!confirm(`${unitIds.length}単元を${options.rangeType}範囲として保存します。よろしいですか？`)) return; try { await api("saveRange", { ...options, unitIds }); closeModal(); status("学校別テスト範囲を保存しました。"); } catch (error) { status(error.message, true); } };
+    if ($("saveRange")) $("saveRange").onclick = () => saveRangeSelection();
     if ($("saveLesson")) $("saveLesson").onclick = () => {
       const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
       if (!unitIds.length) return status(options.mode === "correction" ? "訂正後の単元を1つ以上選択してください。" : "今回進んだ単元を選択してください。", true);
@@ -556,6 +653,7 @@ async function saveLessonWithHomework(options, homeworkByUnit) {
   if ($("lessonSaveStatus")) $("lessonSaveStatus").textContent = "保存しています。画面を閉じずにお待ちください。";
   try {
     await api(correcting ? "updateLessonCorrection" : "saveLesson", { studentId: options.studentId, subject: options.subject, lessonId: options.lessonId, teacherId: options.teacherId, unitIds: options.unitIds, homeworkByUnit, idempotencyKey: options.idempotencyKey });
+    invalidateProgressionCache(options);
     delete state.teacherStudentCache[String(options.studentId)];
     delete $("modal").dataset.refreshTeacher;
     closeModal();
@@ -569,7 +667,7 @@ async function saveLessonWithHomework(options, homeworkByUnit) {
 
 function openCtForm(options, unitId) {
   showModal(`<h2>CT結果を登録</h2><p>前回授業範囲から1単元だけ登録します。</p><div class="actionRow">${["◎", "〇", "×"].map((r) => `<button class="primaryBtn ctResult" data-result="${r}">${r}</button>`).join("")}</div><p class="muted">×は自動的に特訓部屋対象になります。試験中のメールは送信抑止されます。</p>`);
-  $("modalBody").querySelectorAll(".ctResult").forEach((button) => button.onclick = async () => { try { await api("saveCt", { studentId: options.studentId, subject: options.subject, unitId, result: button.dataset.result, idempotencyKey: crypto.randomUUID() }); closeModal(); status("CT結果を登録しました。"); } catch (error) { status(error.message, true); } });
+  $("modalBody").querySelectorAll(".ctResult").forEach((button) => button.onclick = async () => { try { await api("saveCt", { studentId: options.studentId, subject: options.subject, unitId, result: button.dataset.result, idempotencyKey: crypto.randomUUID() }); invalidateProgressionCache(options); closeModal(); status("CT結果を登録しました。"); } catch (error) { status(error.message, true); } });
 }
 
 function showModal(html) { $("modalBody").innerHTML = html; if (!$("modal").open) $("modal").showModal(); }
@@ -641,7 +739,13 @@ function openAdminReauth() {
 
 async function login(event) {
   event.preventDefault();
-  if (!state.device) return $("loginMessage").textContent = "端末の種類を選択してください。";
+  if (!state.device) {
+    $("loginMessage").textContent = "⚠ 端末の種類が未選択です。先に「自分の端末」か「塾の共用端末」を選んでください。";
+    $("devicePrompt")?.classList.add("needsChoice");
+    document.querySelector(".deviceChoice")?.focus();
+    $("devicePrompt")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
   $("loginMessage").textContent = "確認中…";
   try {
     const result = await api(state.role === "student" ? "studentLogin" : "staffLogin", { loginId: $("loginId").value.trim(), password: $("loginPassword").value, deviceMode: state.device }, { silent: true });
@@ -695,6 +799,10 @@ document.querySelectorAll(".roleTab").forEach((tab) => tab.onclick = () => {
 document.querySelectorAll(".deviceChoice").forEach((button) => button.onclick = () => {
   state.device = button.dataset.device;
   document.querySelectorAll(".deviceChoice").forEach((item) => item.classList.toggle("selected", item === button));
+  $("devicePrompt")?.classList.remove("needsChoice");
+  $("devicePrompt")?.classList.add("selectedDevice");
+  if ($("devicePromptWarning")) $("devicePromptWarning").textContent = state.device === "personal" ? "✓ 自分の端末を選択済み" : "✓ 塾の共用端末を選択済み";
+  $("loginMessage").textContent = "";
   $("rememberRow").classList.toggle("hidden", state.device !== "personal");
   if (state.device === "shared") $("rememberLogin").checked = false;
 });

@@ -19,3 +19,44 @@
 .studentTabWrap{display:inline-flex;align-items:center;flex:0 0 auto;border:1px solid var(--line);border-radius:999px;background:#fff;overflow:hidden}.studentTabWrap .studentTab{border:0;border-radius:0;background:transparent}.studentTabWrap .studentTabClose{align-self:stretch;border:0;border-left:1px solid var(--line);padding:0 10px;background:#f7f9f8;color:#7b2727;font-size:1rem;font-weight:900;cursor:pointer}.studentTabWrap.active{border-color:var(--forest);background:var(--forest);color:#fff}.studentTabWrap.active .studentTab{color:#fff}.studentTabWrap.active .studentTabClose{border-left-color:rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff}.studentTabClose:hover{background:#fee2e2}.teacherNoticeCard{border:2px solid #e2a226;background:#fff8df;box-shadow:0 8px 26px rgba(153,95,0,.12)}.teacherNoticeCard .cardTitle{color:#8a5300}.teacherNoticeCard .noticeLine{font-weight:800;color:#4a3511}.schoolPinButton.active{min-width:142px;border:2px solid #075a9c;background:#126fba;color:#fff;font-size:.8rem;box-shadow:0 4px 12px rgba(18,111,186,.3)}.unitRow.schoolPosition{border:2px solid #2b7fc1;background:#edf7ff;box-shadow:inset 6px 0 0 #126fba}.unitRow.schoolPosition.todaySelected{box-shadow:inset 6px 0 0 #126fba,inset 10px 0 0 #16a085}
 .scoreCorrectionMini{display:inline-block;margin-left:8px;color:var(--muted);font-size:.64rem;font-weight:700;text-decoration:underline;text-underline-offset:2px}.progressStudentName{color:var(--forest2);font-size:.9rem}.unitHomeworkGroups{display:grid;gap:7px;margin-top:12px}.unitHomeworkGroup{border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}.unitHomeworkGroup[open]{border-color:#9bc9bc;background:#f8fffc}.unitHomeworkGroup summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;cursor:pointer;list-style-position:inside}.unitHomeworkGroup summary strong{font-size:.8rem}.compactHomeworkGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px;padding:8px 12px;border-top:1px solid var(--line)}.compactHomeworkGrid label{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;background:var(--soft);font-size:.72rem}.compactHomeworkGrid input{margin:0;accent-color:var(--forest)}.unitOtherHomework{width:calc(100% - 24px);margin:2px 12px 11px;padding:7px 9px;font-size:.72rem}.fixedHomeworkNote{margin:2px 12px 11px;color:var(--forest2);font-size:.7rem}.lessonSaveStatus{display:block;min-height:1.4em;margin-top:10px;color:var(--forest2);font-size:.78rem;font-weight:800}.lessonSaveActions{justify-content:flex-end;margin-top:8px}@media(max-width:620px){.compactHomeworkGrid{grid-template-columns:1fr}}
 .teacherSearchGrid{display:grid;grid-template-columns:minmax(220px,2fr) minmax(100px,1fr) minmax(100px,1fr);gap:10px;align-items:end}.teacherSearchGrid label{min-width:0;font-size:.8rem;font-weight:800}.teacherSearchGrid label>span{display:block;margin-bottom:6px}.teacherSearchGrid .field{width:100%}.compactCorrectionButton{padding:8px 10px;font-size:.72rem}.schoolLegendControl{display:flex!important;align-items:center;gap:5px;flex-wrap:wrap;border-left:1px solid var(--line);padding-left:9px}.schoolLegendControl b{color:#174b7a;font-size:.72rem}.schoolLegendControl small{font-size:.66rem}.schoolLegendControl input{width:118px;border:1px solid #b9c9d7;border-radius:7px;padding:4px 6px;color:#174b7a;font-size:.68rem}.schoolLegendControl output{flex-basis:100%;color:#174b7a;font-size:.66rem;font-weight:800}.schoolPinButton.active{min-width:0;border:1px solid #075a9c;padding:5px 7px;background:#126fba;color:#fff;font-size:.68rem;box-shadow:none}.lessonCorrectionList{display:grid;gap:8px;margin-top:14px}.lessonCorrectionItem{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(180px,1.6fr) auto;gap:12px;align-items:center;width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:#fff;color:var(--ink);text-align:left;cursor:pointer}.lessonCorrectionItem:hover{border-color:var(--forest);background:var(--mint)}.lessonCorrectionItem span{display:grid;gap:3px}.lessonCorrectionItem small{color:var(--muted)}.lessonCorrectionItem b{color:var(--forest2);font-size:.76rem}@media(max-width:560px){.teacherSearchGrid{grid-template-columns:minmax(120px,2fr) minmax(70px,1fr) minmax(70px,1fr);gap:6px}.teacherSearchGrid label{font-size:.7rem}.teacherSearchGrid .field{padding:8px 6px;font-size:.74rem}.lessonCorrectionItem{grid-template-columns:1fr auto}.lessonCorrectionItem>span:nth-child(2){grid-column:1/-1;grid-row:2}}
+
+
+/* 2026-08-22: progress usability, range autosave, and explicit device selection */
+.devicePrompt{border:2px solid #f4bf50;background:#fffaf0;border-radius:16px;padding:14px 15px;transition:border-color .18s,background .18s,box-shadow .18s}
+.devicePromptTitle{display:flex;align-items:center;gap:8px;margin:0 0 6px!important}
+.deviceRequired{display:inline-flex;align-items:center;border-radius:999px;background:#b91c1c;color:#fff;padding:2px 7px;font-size:.68rem;letter-spacing:.04em}
+.devicePromptWarning{margin:0 0 10px!important;color:#9a5b00;font-size:.78rem;font-weight:900;line-height:1.5}
+.devicePrompt.selectedDevice{border-color:#65b9a7;background:#f0fbf7}
+.devicePrompt.selectedDevice .devicePromptWarning{color:#0f766e}
+.devicePrompt.needsChoice{border-color:#dc2626;background:#fff1f2;box-shadow:0 0 0 4px rgba(220,38,38,.12);animation:deviceAttention .65s ease-in-out 2}
+.devicePrompt.needsChoice .devicePromptWarning{color:#b91c1c}
+@keyframes deviceAttention{0%,100%{transform:translateX(0)}30%{transform:translateX(-4px)}70%{transform:translateX(4px)}}
+
+.unitName{display:flex;align-items:baseline;gap:7px;min-width:0;line-height:1.35}
+.unitName>br{display:none}
+.unitName strong{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.unitPrefix{order:-1;flex:0 0 auto;color:var(--muted);font-size:.72rem;font-weight:700;white-space:nowrap}
+.unitRow.rangeSelectable{grid-template-columns:70px minmax(260px,1fr) auto 86px}
+.unitRow.rangeSelectable>.unitNumber{grid-column:1;grid-row:1}
+.unitRow.rangeSelectable>.unitName{grid-column:2;grid-row:1}
+.unitRow.rangeSelectable>.unitMeta{grid-column:3;grid-row:1}
+.rangeCheckCell{grid-column:4;grid-row:1;display:grid;justify-items:center;gap:3px;align-self:stretch;align-content:center;padding:3px 6px;border-left:1px solid var(--line);color:var(--forest2);font-weight:900}
+.rangeCheckCell small{font-size:.64rem;white-space:nowrap}
+.rangeCheckCell .unitCheck{width:22px;height:22px;margin:0}
+.rangeAutoSave{display:inline-flex;align-items:center;min-height:32px;border-radius:999px;background:#e7f8f1;color:#0f766e;padding:5px 10px;font-size:.72rem;font-weight:900}
+.compactManualSave{padding:8px 11px;font-size:.74rem}
+.fastLoad{min-height:90px}
+@media(max-width:860px){
+  .unitRow.rangeSelectable{grid-template-columns:60px minmax(0,1fr) 86px}
+  .unitRow.rangeSelectable>.unitNumber{grid-column:1}
+  .unitRow.rangeSelectable>.unitName{grid-column:2}
+  .unitRow.rangeSelectable>.rangeCheckCell{grid-column:3}
+  .unitRow.rangeSelectable>.unitMeta{grid-column:1/4;grid-row:2;justify-content:flex-start}
+}
+@media(max-width:560px){
+  .unitName{gap:5px}
+  .unitPrefix{font-size:.67rem}
+  .unitName strong{-webkit-line-clamp:2}
+  .rangeCheckCell{padding-inline:3px}
+  .rangeCheckCell small{font-size:.6rem}
+}

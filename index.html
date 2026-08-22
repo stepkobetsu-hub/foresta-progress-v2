@@ -8,12 +8,12 @@
   <title>フォレスタ進捗管理</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260815-lesson-correction">
+  <link rel="stylesheet" href="styles.css?v=20260822-usability">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="フォレスタ進捗管理 ホーム"><span class="brandMark">F</span><span>フォレスタ進捗管理</span></a>
-    <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">フォレスタ＆ゴールへ ↗</a>
+    <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">ステップ＆ゴールへ ↗</a>
   </header>
 
   <main id="app" class="appShell">
@@ -30,8 +30,9 @@
           <button class="roleTab active" data-role="student" role="tab" aria-selected="true">生徒用</button>
           <button class="roleTab" data-role="teacher" role="tab" aria-selected="false">講師用</button>
         </div>
-        <div class="devicePrompt">
-          <p>この端末はどちらですか？</p>
+        <div id="devicePrompt" class="devicePrompt">
+          <p class="devicePromptTitle">この端末はどちらですか？ <strong class="deviceRequired">必須</strong></p>
+          <p id="devicePromptWarning" class="devicePromptWarning">⚠ 先に「自分の端末」か「塾の共用端末」を選んでください。</p>
           <div class="deviceChoices">
             <button class="deviceChoice" data-device="personal"><strong>自分の端末</strong><small>希望時だけログインを記憶</small></button>
             <button class="deviceChoice" data-device="shared"><strong>塾の共用端末</strong><small>情報を端末に残しません</small></button>
@@ -65,6 +66,6 @@
 
   <dialog id="modal" class="modal"><div class="modalFrame"><button id="modalClose" class="modalClose" type="button" aria-label="閉じる">×</button><div id="modalBody"></div></div></dialog>
   <template id="loadingTemplate"><div class="loadingCard"><span class="spinner"></span><p>読み込み中です…</p></div></template>
-  <script type="module" src="app.js?v=20260815-japanese-progress"></script>
+  <script type="module" src="app.js?v=20260822-usability"></script>
 </body>
 </html>
