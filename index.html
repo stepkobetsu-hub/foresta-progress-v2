@@ -13,7 +13,10 @@
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="フォレスタ進捗管理 ホーム"><span class="brandMark">F</span><span>フォレスタ進捗管理</span></a>
-    <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">ステップ＆ゴールへ ↗</a>
+    <div style="display:flex;align-items:center;gap:14px">
+      <button type="button" onclick="document.getElementById('adminEntry')?.click()" style="border:0;background:transparent;padding:0;color:#115e59;font-size:.88rem;font-weight:800;cursor:pointer">管理者画面へ</button>
+      <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">ステップ＆ゴールへ ↗</a>
+    </div>
   </header>
 
   <main id="app" class="appShell">
