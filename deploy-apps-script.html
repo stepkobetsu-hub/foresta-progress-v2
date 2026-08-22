@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>フォレスタ進捗管理｜Apps Script更新</title>
+  <style>
+    :root{--ink:#17201f;--muted:#66736f;--line:#dfe7e4;--forest:#0f766e;--forest2:#115e59;--soft:#f4f8f6;--warn:#9a5b00}
+    *{box-sizing:border-box}body{margin:0;background:#f4f8f6;color:var(--ink);font-family:"Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif}.wrap{width:min(850px,calc(100% - 28px));margin:36px auto}.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 10px 28px rgba(23,32,31,.08)}h1{margin:0 0 8px;font-size:clamp(24px,4vw,34px)}p{line-height:1.75}.muted{color:var(--muted)}.status{margin:14px 0;padding:12px;border-radius:10px;background:#edf8f4;color:var(--forest2);font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.btn{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 16px;border:0;border-radius:11px;background:var(--forest);color:#fff;font-weight:900;text-decoration:none;cursor:pointer}.btn.sub{background:#fff;color:var(--forest2);border:1px solid #a9cfc4}.steps{display:grid;gap:12px;counter-reset:step;margin-top:18px}.step{position:relative;padding:14px 14px 14px 54px;border:1px solid var(--line);border-radius:12px;background:#fff}.step:before{counter-increment:step;content:counter(step);position:absolute;left:14px;top:13px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--forest);color:#fff;font-weight:900}.step b{display:block;margin-bottom:4px}.warn{margin-top:18px;padding:12px 14px;border:1px solid #efd297;border-radius:10px;background:#fff9e9;color:#6f4c00;line-height:1.65}.codeInfo{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;overflow-wrap:anywhere}.done{background:#e7f8ef!important;color:#11623e!important}.error{background:#feecec!important;color:#a11d1d!important}
+  </style>
+</head>
+<body>
+<main class="wrap">
+  <section class="card">
+    <p class="muted" style="margin-top:0">フォレスタ進捗管理 v2</p>
+    <h1>Apps Script 本番更新</h1>
+    <p>GitHubで検証済みの最新 <code>Code.gs</code> を、既存のApps Scriptプロジェクトへ反映して同じWebアプリURLのまま更新します。</p>
+    <div id="status" class="status">最新コードを読み込んでいます…</div>
+    <div class="actions">
+      <button id="copyCode" class="btn" disabled>① 最新 Code.gs をコピー</button>
+      <a class="btn sub" href="https://script.google.com/home/projects/1-hDf82U2uQ1zVL7WBXTyXyXXJxWsJvBHeOiTLj-N0AG3NAqXZcp6wv0M/edit" target="_blank" rel="noopener">② Apps Scriptを開く ↗</a>
+      <a class="btn sub" href="https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec" target="_blank" rel="noopener">更新後にAPIを確認 ↗</a>
+    </div>
+    <div class="steps">
+      <div class="step"><b>Code.gs を全置換</b>Apps Scriptで <strong>Code.gs</strong> を開き、本文をすべて選択して、①でコピーした内容を貼り付けて保存してください。</div>
+      <div class="step"><b>既存デプロイを編集</b>右上の <strong>デプロイ → デプロイを管理</strong> を開き、現在のWebアプリを選んで鉛筆アイコンを押します。</div>
+      <div class="step"><b>「新バージョン」を選択してデプロイ</b>バージョン欄で <strong>新バージョン</strong> を選択し、説明を「3周進捗・範囲外確認・宿題UI 2026-08-23」などとして <strong>デプロイ</strong> を押してください。既存デプロイを更新するのでURLは変わりません。</div>
+    </div>
+    <div class="warn"><strong>重要：</strong>「新しいデプロイ」を作らず、現在のデプロイID <span class="codeInfo">AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ</span> を更新してください。</div>
+  </section>
+</main>
+<script>
+(async()=>{
+  const status=document.getElementById('status'),button=document.getElementById('copyCode');
+  try{
+    const response=await fetch('./apps-script/Code.gs?v=20260823-rounds',{cache:'no-store'});
+    if(!response.ok)throw new Error('Code.gsを取得できませんでした');
+    const code=await response.text();
+    if(!code.includes("case 'saveStudentRoundProgress'")||!code.includes('studentRoundRows_'))throw new Error('3周対応版ではありません');
+    window.latestCode=code;
+    button.disabled=false;
+    status.textContent='検証済みの3周対応版 Code.gs を読み込みました。';
+    status.classList.add('done');
+  }catch(error){status.textContent=error.message;status.classList.add('error')}
+  button.onclick=async()=>{
+    try{await navigator.clipboard.writeText(window.latestCode);button.textContent='✓ コピーしました';status.textContent='コピー完了。② Apps Scriptを開いて Code.gs を全置換してください。';status.classList.add('done')}
+    catch{status.textContent='自動コピーできませんでした。ブラウザーのクリップボード許可を確認してください。';status.classList.add('error')}
+  };
+})();
+</script>
+</body>
+</html>
