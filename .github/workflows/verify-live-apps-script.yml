@@ -1,0 +1,46 @@
+name: Verify live Apps Script deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - verify-live-trigger.txt
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify deployed API recognizes three-round action
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec'
+
+          echo '=== GET ==='
+          GET_BODY="$(curl -L --fail-with-body -sS "$API")"
+          echo "$GET_BODY"
+
+          echo '=== POST health ==='
+          HEALTH="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"health"}' "$API")"
+          echo "$HEALTH"
+          echo "$HEALTH" | grep -q '"status":"ready"'
+
+          echo '=== POST new three-round action without auth ==='
+          ROUND="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"saveStudentRoundProgress","subject":"数学","unitId":"VERIFY_ONLY","roundNumber":1,"checked":true}' "$API")"
+          echo "$ROUND"
+
+          if echo "$ROUND" | grep -q '処理を実行できません'; then
+            echo 'ERROR: live deployment is still old and does not recognize saveStudentRoundProgress.'
+            exit 1
+          fi
+          if echo "$ROUND" | grep -q 'ログインの有効期限が切れました'; then
+            echo 'SUCCESS: live deployment recognizes saveStudentRoundProgress and reached authentication.'
+            exit 0
+          fi
+
+          echo 'ERROR: unexpected response from live deployment.'
+          exit 1
