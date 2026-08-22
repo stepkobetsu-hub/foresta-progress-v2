@@ -236,8 +236,8 @@ async function renderStudent(view) {
       ${metricCard("テストまで", next ? `${next.daysUntil}日` : "未設定", next ? "日本時間で計算" : "", next?.daysUntil <= 14 ? "alert" : "")}
       ${metricCard("学校との比較", p.comparison || "未設定", p.subject || "英語・数学から選択", p.comparison === "学校より先" ? "" : "alert")}
       <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
-      <article class="card span6"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
-      <article class="card span6"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
+      <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
+      <article class="card span12 studentTargetPanel"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
     </section>`;
   const studentProgressMode = data.capabilities?.studentRoundInput ? "student" : "view";
   $("content").querySelectorAll(".progressionButton").forEach((button) => {
@@ -261,7 +261,7 @@ function studentHomeworkCardsHtml(items) {
   });
   return [...groups.values()].map((group) => {
     const subject = group.subject || "宿題";
-    const tasks = group.items.map((item) => `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}"><strong>${esc(item.contentText || item.contentType)}</strong><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span>${item.studentChecked && !item.teacherChecked ? '<small>先生の確認待ち</small>' : ""}</label>`).join("");
+    const tasks = group.items.map((item) => `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}"><strong>${esc(item.contentText || item.contentType)}</strong><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済み" : item.studentChecked ? "保存済み・先生の確認待ち" : "変更すると自動保存"}</small></label>`).join("");
     return `<article class="studentHomeworkCard ${subjectProgressClass(subject)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
   }).join("");
 }
@@ -284,9 +284,24 @@ function renderHomeworkPage(data) {
 
 function bindHomeworkChecks() {
   $("content").querySelectorAll(".homeworkCheck:not(:disabled)").forEach((input) => input.onchange = async () => {
+    const nextChecked = input.checked;
+    const item = input.closest(".studentHomeworkTask, .homeworkItem");
+    const saveState = item?.querySelector(".homeworkSaveState");
     input.disabled = true;
-    try { await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: input.checked }); state.dashboard = null; await openView(state.activeView); }
-    catch (error) { input.checked = !input.checked; input.disabled = false; status(error.message, true); }
+    if (saveState) saveState.textContent = "保存中…";
+    try {
+      await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: nextChecked });
+      state.dashboard = null;
+      if (saveState) saveState.textContent = nextChecked ? "保存済み・先生の確認待ち" : "保存済み";
+      const actionLabel = item?.querySelector(".studentTaskAction b");
+      if (actionLabel) actionLabel.textContent = "チェック";
+      input.disabled = false;
+    } catch (error) {
+      input.checked = !nextChecked;
+      input.disabled = false;
+      if (saveState) saveState.textContent = "保存失敗・もう一度変更してください";
+      status(error.message, true);
+    }
   });
 }
 
@@ -306,18 +321,50 @@ function bindTeacherHomeworkChecks() {
 
 function targetForm(targets, testId) {
   if (!testId) return '<div class="emptyState">次回テスト未登録のため入力できません。</div>';
-  return `<form id="targetForm"><div class="targetGrid">${SUBJECTS.map((subject) => `<label>${subject}<input name="${subject}" type="number" min="0" max="100" inputmode="numeric" value="${esc(targets[subject] ?? "")}"></label>`).join("")}</div><button class="primaryBtn" type="submit" style="margin-top:12px">目標点を保存</button></form>`;
+  return `<form id="targetForm" class="autoSaveForm"><div class="targetGrid">${SUBJECTS.map((subject) => `<label>${subject}<input name="${subject}" type="number" min="0" max="100" inputmode="numeric" value="${esc(targets[subject] ?? "")}"></label>`).join("")}</div><p id="targetAutoSave" class="autoSaveHint" aria-live="polite">入力すると自動保存されます。</p></form>`;
 }
 
 function bindTargetForm(testId) {
   const form = $("targetForm");
   if (!form) return;
-  form.onsubmit = async (event) => {
-    event.preventDefault();
+  const hint = $("targetAutoSave");
+  let saveTimer = 0;
+  let saving = false;
+  let saveAgain = false;
+
+  const saveNow = async () => {
+    clearTimeout(saveTimer);
+    if (saving) { saveAgain = true; return; }
+    const invalid = [...form.querySelectorAll("input")].find((input) => input.value !== "" && !input.checkValidity());
+    if (invalid) { if (hint) hint.textContent = "0〜100で入力してください。"; return; }
+    saving = true;
+    saveAgain = false;
     const values = Object.fromEntries(new FormData(form));
-    try { await api("saveTargets", { testId, values }); state.dashboard = null; status("目標点を保存しました。"); }
-    catch (error) { status(error.message, true); }
+    if (hint) hint.textContent = "自動保存中…";
+    try {
+      await api("saveTargets", { testId, values }, { silent: true });
+      state.dashboard = null;
+      if (hint) hint.textContent = "✓ 自動保存済み";
+    } catch (error) {
+      if (hint) hint.textContent = "保存できませんでした。入力を確認してください。";
+      status(error.message, true);
+    } finally {
+      saving = false;
+      if (saveAgain) { saveAgain = false; saveTimer = setTimeout(saveNow, 80); }
+    }
   };
+
+  const scheduleSave = (delay = 520) => {
+    clearTimeout(saveTimer);
+    if (hint) hint.textContent = "自動保存待ち…";
+    saveTimer = setTimeout(saveNow, delay);
+  };
+
+  form.querySelectorAll("input").forEach((input) => {
+    input.addEventListener("input", () => scheduleSave(520));
+    input.addEventListener("change", () => scheduleSave(120));
+  });
+  form.onsubmit = (event) => { event.preventDefault(); saveNow(); };
 }
 
 function renderScoresPage(data) {
