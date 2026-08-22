@@ -1,0 +1,78 @@
+name: Diagnose and apply 2026-08-23 three-round update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .rounds-trigger-20260823
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foresta-progress-v2-rounds-diagnostic-20260823
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply, test, and record result
+        shell: bash
+        run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          set +e
+          {
+            echo '=== APPLY PATCH ==='
+            node scripts/apply-20260823-rounds.mjs
+            patch_code=$?
+            if [ "$patch_code" -ne 0 ]; then exit "$patch_code"; fi
+            echo '=== EXISTING TESTS ==='
+            npm test
+            test_code=$?
+            if [ "$test_code" -ne 0 ]; then exit "$test_code"; fi
+            echo '=== APP.JS PARSE ==='
+            node --check app.js
+            app_code=$?
+            if [ "$app_code" -ne 0 ]; then exit "$app_code"; fi
+            echo '=== CODE.GS PARSE ==='
+            cp apps-script/Code.gs /tmp/foresta-code.js
+            node --check /tmp/foresta-code.js
+          } > /tmp/rounds-result.log 2>&1
+          result=$?
+          set -e
+
+          if [ "$result" -ne 0 ]; then
+            git reset --hard HEAD
+            cp /tmp/rounds-result.log PATCH_ROUNDS_ERROR.txt
+            git add PATCH_ROUNDS_ERROR.txt
+            git commit -m "Record three-round patch diagnostic failure"
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          rm -f PATCH_ROUNDS_ERROR.txt
+          git add index.html app.js styles.css apps-script/Code.gs
+          if git diff --cached --quiet; then
+            echo 'Patch produced no source changes.' > PATCH_ROUNDS_ERROR.txt
+            git add PATCH_ROUNDS_ERROR.txt
+            git commit -m "Record empty three-round patch result"
+          else
+            git commit -m "Add three-round progress and range override flow"
+          fi
+          git push origin HEAD:main
