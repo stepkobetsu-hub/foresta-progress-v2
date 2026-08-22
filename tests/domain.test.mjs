@@ -43,8 +43,10 @@ assert.notEqual(rangeKey({ testId: "t", school: "南城中", grade: "中2", subj
 assert.equal(selectNextTest([{ startDate: "2026-08-01", endDate: "2026-08-14" }, { startDate: "2026-09-01", endDate: "2026-09-02" }], new Date("2026-08-15")).startDate, "2026-09-01");
 assert.equal(makeHomework("数学", "u1", "2026-08-15").length, 3);
 assert.equal(makeHomework("英語", "u1", "2026-08-15").length, 5);
-assert.deepEqual(TRACKED_SUBJECTS, ["国語", "英語", "数学"]);
+assert.deepEqual(TRACKED_SUBJECTS, ["国語", "英語", "数学", "理科", "社会"]);
 assert.deepEqual(makeHomework("国語", "u1", "2026-08-15"), []);
+assert.deepEqual(makeHomework("理科", "u1", "2026-08-15"), []);
+assert.deepEqual(makeHomework("社会", "u1", "2026-08-15"), []);
 assert.deepEqual(makeHomework("英語", "u-keywords", "2026-08-15", "KEY WORDS TEST").map((item) => item.contentType), ["巻末のKeyWordsTestの暗記"]);
 assert.deepEqual(makeHomework("数学", "u-keywords", "2026-08-15", "Key Words TEST").map((item) => item.contentType), ["巻末のKeyWordsTestの暗記"]);
 assert.equal(comparePositions(3, 4), "学校より先");
@@ -53,9 +55,11 @@ assert.equal(formatProgressUnitNumber("英語", { chapter: "2", unitNumber: "Par
 assert.equal(formatProgressUnitNumber("数学", { chapter: "2", unitNumber: "2-1" }), "2-1");
 assert.equal(formatProgressGroupLabel("英語", "2"), "UNIT 2");
 assert.equal(formatProgressGroupLabel("数学", "2"), "第2章");
+assert.equal(formatProgressGroupLabel("理科", "2"), "第2章");
+assert.equal(formatProgressGroupLabel("理科", "[1年生] 3"), "1年生 第3章");
 assert.equal(formatProgressGroupLabel("英語", "[1年生] 9"), "1年生 UNIT 9");
 assert.equal(progressGroupKey({ chapter: "未区分", unitNumber: "プレステップ①", unitName: "アルファベット" }), "プレステップ");
 assert.equal(progressGroupKey({ chapter: "-", unitNumber: "プレステップ⑥", unitName: "いつ" }), "プレステップ");
 assert.equal(progressGroupKey({ chapter: "2", unitNumber: "Part1", unitName: "My Hero" }), "2");
 
-console.log("domain tests: 34 assertions passed");
+console.log("domain tests: five-subject progression assertions passed");
