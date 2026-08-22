@@ -1,0 +1,46 @@
+name: Diagnose science social patch 2026-08-23
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - science-social-diagnose-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run patch and capture result
+        shell: bash
+        run: |
+          set +e
+          node scripts/apply-20260823-science-social.mjs > SCIENCE_SOCIAL_DIAG.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> SCIENCE_SOCIAL_DIAG.txt
+          npm test >> SCIENCE_SOCIAL_DIAG.txt 2>&1
+          echo "test_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
+          node --check app.js >> SCIENCE_SOCIAL_DIAG.txt 2>&1
+          echo "app_parse_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
+          cp apps-script/Code.gs /tmp/Code.js
+          node --check /tmp/Code.js >> SCIENCE_SOCIAL_DIAG.txt 2>&1
+          echo "gas_parse_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
+          set -e
+      - name: Commit diagnostic result
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SCIENCE_SOCIAL_DIAG.txt
+          git commit -m "Record science social patch diagnostics" || exit 0
+          git push origin HEAD:main
