@@ -1,1 +1,1 @@
-seed=do-not-run-on-main
+trigger=2026-08-23T00:55+09:00
