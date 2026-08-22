@@ -19,7 +19,7 @@ let REQUEST_CACHE = {};
 
 function doGet(e) {
   ensureScienceSocialUnits_();
-  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.1.0', time: nowIso_() });
+  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.2.0', time: nowIso_() });
 }
 
 function doPost(e) {
@@ -329,33 +329,82 @@ function replaceRows_(name, predicate, newObjects) {
   delete REQUEST_CACHE['objects:'+name];
 }
 
+function importMasterText_(value) {
+  return text_(value).replace(/[\r\n]+/g, ' ').replace(/[\s　]+/g, ' ').trim();
+}
+
+function scienceRowsFromSheet_(sheet, grade, textbook, slug) {
+  const values = sheet.getDataRange().getDisplayValues(), out = [];
+  [0, 12].forEach(function(base) {
+    let chapter = '';
+    for (let r = 3; r < values.length; r++) {
+      const row = values[r] || [], nextChapter = importMasterText_(row[base]), difficulty = importMasterText_(row[base + 1]), step = importMasterText_(row[base + 2]), title = importMasterText_(row[base + 3]);
+      if (nextChapter && nextChapter !== '章') chapter = nextChapter;
+      if (!step || step === 'STEP' || !title || title === 'タイトル') continue;
+      out.push({ chapter: chapter, difficulty: difficulty, step: step, title: title });
+    }
+  });
+  return out.map(function(item, index) {
+    return {
+      '単元ID': 'sci-g' + grade.slice(-1) + '-' + slug + '-' + String(index + 1).padStart(4, '0'),
+      '教科': '理科', '学年': grade, '表示順': index + 1, '章': item.chapter, '単元番号': item.step, '単元名': item.title, '難度': item.difficulty,
+      '教科書または進行表の種類': textbook, '元ファイル名': '26F進行表オモテ【中学理科】.xls'
+    };
+  });
+}
+
+function socialTrackRows_(sheet, domain) {
+  const values = sheet.getDataRange().getDisplayValues(), out = [];
+  [0, 11].forEach(function(base) {
+    let chapter = '';
+    for (let r = 2; r < values.length; r++) {
+      const row = values[r] || [], nextChapter = importMasterText_(row[base]), step = importMasterText_(row[base + 1]), title = importMasterText_(row[base + 2]);
+      if (nextChapter && nextChapter !== '章') chapter = nextChapter;
+      if (!step || step === 'STEP' || !title || title === 'タイトル') continue;
+      out.push({ chapter: domain + ' ' + chapter, step: domain + ' ' + step, title: title });
+    }
+  });
+  return out;
+}
+
+function socialVariantRows_(geography, history, civics, textbook, slug) {
+  return geography.concat(history, civics).map(function(item, index) {
+    return {
+      '単元ID': 'soc-common-' + slug + '-' + String(index + 1).padStart(4, '0'),
+      '教科': '社会', '学年': '共通', '表示順': index + 1, '章': item.chapter, '単元番号': item.step, '単元名': item.title, '難度': '',
+      '教科書または進行表の種類': textbook, '元ファイル名': '26F進行表オモテ【中学社会】.xls'
+    };
+  });
+}
+
 function ensureScienceSocialUnits_() {
-  const properties = PropertiesService.getScriptProperties();
-  const markerKey = 'FORESTA_SCI_SOC_UNITS_V1';
+  const markerKey = 'FORESTA_SCI_SOC_UNITS_V2', properties = PropertiesService.getScriptProperties();
   if (properties.getProperty(markerKey) === 'done') return;
-  try {
-    const existingRows = objects_('単元マスタ');
-    const existingIds = new Set(existingRows.map(function(row) { return text_(row['単元ID']); }));
-    const alreadySeeded = existingRows.some(function(row) { return /^sci-/u.test(text_(row['単元ID'])); }) && existingRows.some(function(row) { return /^soc-/u.test(text_(row['単元ID'])); });
-    if (alreadySeeded) { properties.setProperty(markerKey, 'done'); return; }
-    const url = 'https://raw.githubusercontent.com/stepkobetsu-hub/foresta-progress-v2/main/data/science-social-units.tsv?v=20260823';
-    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
-    if (response.getResponseCode() !== 200) throw new Error('SCI_SOC_MASTER_FETCH_FAILED');
-    const rows = response.getContentText('UTF-8').split(/\r?\n/u).filter(Boolean).map(function(line) {
-      const cols = line.split('\t');
-      if (cols.length < 10) throw new Error('SCI_SOC_MASTER_INVALID');
-      return {
-        '単元ID': cols[0], '教科': cols[1], '学年': cols[2], '表示順': Number(cols[3] || 0), '章': cols[4],
-        '単元番号': cols[5], '単元名': cols[6], '難度': cols[7], '教科書または進行表の種類': cols[8], '元ファイル名': cols[9]
-      };
-    });
-    if (rows.length !== 368) throw new Error('SCI_SOC_MASTER_COUNT_MISMATCH');
-    const missing = rows.filter(function(row) { return !existingIds.has(text_(row['単元ID'])); });
-    if (missing.length) appendObjects_('単元マスタ', missing);
-    properties.setProperty(markerKey, 'done');
-  } catch (error) {
-    console.error('Science/social unit seed failed', error && error.stack ? error.stack : error);
-  }
+  const existing = objects_('単元マスタ'), existingIds = new Set(existing.map(function(row) { return text_(row['単元ID']); }));
+  const scienceBook = SpreadsheetApp.openById('1xWIY6LuqhGRss3tInWdUYkQ0jErg7yALfWUPImjiV60');
+  const socialBook = SpreadsheetApp.openById('1kdeA8KXBGyl3T2vJlql8CCMpayoVVenTuE70NK5WHYQ');
+  const scienceDefs = [
+    ['中1(東書)', '中1', '東書', 'tosho', 28], ['中1(啓林)', '中1', '啓林館', 'keirin', 28],
+    ['中2(東書)', '中2', '東書', 'tosho', 57], ['中2(啓林)', '中2', '啓林館', 'keirin', 57],
+    ['中3(東書)', '中3', '東書', 'tosho', 55], ['中3(啓林)', '中3', '啓林館', 'keirin', 55]
+  ];
+  let rows = [];
+  scienceDefs.forEach(function(def) {
+    const parsed = scienceRowsFromSheet_(scienceBook.getSheetByName(def[0]), def[1], def[2], def[3]);
+    if (parsed.length !== def[4]) throw new Error('SCIENCE_UNIT_COUNT_' + def[0] + '_' + parsed.length);
+    rows = rows.concat(parsed);
+  });
+  const geography = socialTrackRows_(socialBook.getSheetByName('地理(東書）'), '地理');
+  const historyTosho = socialTrackRows_(socialBook.getSheetByName('歴史（東書）'), '歴史');
+  const historyKyoiku = socialTrackRows_(socialBook.getSheetByName('歴史（教出） '), '歴史');
+  const civics = socialTrackRows_(socialBook.getSheetByName('公民(東書）'), '公民');
+  if (geography.length !== 60 || historyTosho.length !== 65 || historyKyoiku.length !== 65 || civics.length !== 32) throw new Error('SOCIAL_UNIT_COUNT_MISMATCH_' + [geography.length, historyTosho.length, historyKyoiku.length, civics.length].join('_'));
+  rows = rows.concat(socialVariantRows_(geography, historyTosho, civics, '東書', 'tosho'));
+  rows = rows.concat(socialVariantRows_(geography, historyKyoiku, civics, '歴史教出', 'hist-kyoiku'));
+  if (rows.length !== 594) throw new Error('SCI_SOC_MASTER_COUNT_' + rows.length);
+  const missing = rows.filter(function(row) { return !existingIds.has(text_(row['単元ID'])); });
+  if (missing.length) appendObjects_('単元マスタ', missing);
+  properties.setProperty(markerKey, 'done');
 }
 
 function authorizeStudentAccess_(data) {
@@ -403,32 +452,16 @@ function unitsFor_(student, subject) {
   if (subject === '英語') {
     const setting = objects_('学校別英語教科書設定').find(function(row) { return normalizeSchool_(row['学校名正規化キー']) === schoolKey; });
     textbook = setting ? text_(setting['教科書']) : '';
-  } else if (subject === '理科') {
-    textbook = alternateSchool ? '啓林館' : '東書';
-  } else if (subject === '社会') {
-    textbook = alternateSchool ? '東書＋歴史教出' : '東書';
-  }
+  } else if (subject === '理科') textbook = alternateSchool ? '啓林館' : '東書';
+  else if (subject === '社会') textbook = alternateSchool ? '歴史教出' : '東書';
   if (!textbook) return { textbook: '', units: [] };
   const cache = CacheService.getScriptCache(), key = 'UNITS_' + subject + '_' + student.grade + '_' + textbook;
   const hit = cache.get(key); if (hit) return { textbook: textbook, units: JSON.parse(hit) };
   const units = objects_('単元マスタ').filter(function(row) {
-    if (text_(row['教科']) !== subject) return false;
-    if (subject === '社会') {
-      if (text_(row['学年']) !== '共通') return false;
-      const kind = text_(row['教科書または進行表の種類']), chapter = text_(row['章']);
-      if (!alternateSchool) return kind === '東書';
-      return /^歴史/u.test(chapter) ? kind === '教出' : kind === '東書';
-    }
-    return normalizeGrade_(row['学年']) === student.grade && text_(row['教科書または進行表の種類']) === textbook;
-  }).map(function(row) {
-    let displayOrder = Number(row['表示順'] || 0);
-    const chapter = text_(row['章']);
-    if (subject === '社会') {
-      if (/^地理/u.test(chapter)) displayOrder += 1000;
-      else if (/^公民/u.test(chapter)) displayOrder += 2000;
-    }
-    return { unitId: text_(row['単元ID']), subject: subject, grade: student.grade, displayOrder: displayOrder, chapter: chapter, unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']), difficulty: text_(row['難度']), textbook: textbook };
-  }).sort(function(a, b) { return a.displayOrder - b.displayOrder; });
+    const rowGrade = text_(row['学年']);
+    const gradeMatches = normalizeGrade_(rowGrade) === student.grade || (subject === '社会' && rowGrade === '共通');
+    return text_(row['教科']) === subject && gradeMatches && text_(row['教科書または進行表の種類']) === textbook;
+  }).map(function(row) { return { unitId: text_(row['単元ID']), subject: subject, grade: student.grade, displayOrder: Number(row['表示順'] || 0), chapter: text_(row['章']), unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']), difficulty: text_(row['難度']), textbook: textbook }; }).sort(function(a, b) { return a.displayOrder - b.displayOrder; });
   if (JSON.stringify(units).length < 95000) cache.put(key, JSON.stringify(units), 21600);
   return { textbook: textbook, units: units };
 }
