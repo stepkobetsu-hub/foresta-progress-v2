@@ -27,8 +27,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply guarded update
-        run: node scripts/apply-20260823-science-social.mjs
+      - name: Apply complete source import update
+        run: node scripts/upgrade-20260823-science-social-v2.mjs
       - name: Run existing tests
         run: npm test
       - name: Parse-check browser JavaScript
@@ -45,16 +45,17 @@ jobs:
           grep -q 'FORESTA_SCI_SOC_UNITS_V2' apps-script/Code.gs
           grep -q "version: '2.2.0'" apps-script/Code.gs
           grep -q 'TRACKED_SUBJECTS.map((subject)' app.js
+          grep -q 'SCI_SOC_MASTER_COUNT_' apps-script/Code.gs
       - name: Commit verified files
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- domain.js app.js styles.css index.html apps-script/Code.gs; then
+          if git diff --quiet -- app.js index.html apps-script/Code.gs; then
             echo "No source changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add domain.js app.js styles.css index.html apps-script/Code.gs
-          git commit -m "Add science and social progressions"
+          git add app.js index.html apps-script/Code.gs
+          git commit -m "Complete science and social source import"
           git push origin HEAD:main
