@@ -377,6 +377,54 @@ function socialVariantRows_(geography, history, civics, textbook, slug) {
   });
 }
 
+function importMasterText_(value) {
+  return text_(value).replace(/[\r\n]+/g, ' ').replace(/[\s　]+/g, ' ').trim();
+}
+
+function scienceRowsFromSheet_(sheet, grade, textbook, slug) {
+  const values = sheet.getDataRange().getDisplayValues(), out = [];
+  [0, 12].forEach(function(base) {
+    let chapter = '';
+    for (let r = 3; r < values.length; r++) {
+      const row = values[r] || [], nextChapter = importMasterText_(row[base]), difficulty = importMasterText_(row[base + 1]), step = importMasterText_(row[base + 2]), title = importMasterText_(row[base + 3]);
+      if (nextChapter && nextChapter !== '章') chapter = nextChapter;
+      if (!step || step === 'STEP' || !title || title === 'タイトル') continue;
+      out.push({ chapter: chapter, difficulty: difficulty, step: step, title: title });
+    }
+  });
+  return out.map(function(item, index) {
+    return {
+      '単元ID': 'sci-g' + grade.slice(-1) + '-' + slug + '-' + String(index + 1).padStart(4, '0'),
+      '教科': '理科', '学年': grade, '表示順': index + 1, '章': item.chapter, '単元番号': item.step, '単元名': item.title, '難度': item.difficulty,
+      '教科書または進行表の種類': textbook, '元ファイル名': '26F進行表オモテ【中学理科】.xls'
+    };
+  });
+}
+
+function socialTrackRows_(sheet, domain) {
+  const values = sheet.getDataRange().getDisplayValues(), out = [];
+  [0, 11].forEach(function(base) {
+    let chapter = '';
+    for (let r = 2; r < values.length; r++) {
+      const row = values[r] || [], nextChapter = importMasterText_(row[base]), step = importMasterText_(row[base + 1]), title = importMasterText_(row[base + 2]);
+      if (nextChapter && nextChapter !== '章') chapter = nextChapter;
+      if (!step || step === 'STEP' || !title || title === 'タイトル') continue;
+      out.push({ chapter: domain + ' ' + chapter, step: domain + ' ' + step, title: title });
+    }
+  });
+  return out;
+}
+
+function socialVariantRows_(geography, history, civics, textbook, slug) {
+  return geography.concat(history, civics).map(function(item, index) {
+    return {
+      '単元ID': 'soc-common-' + slug + '-' + String(index + 1).padStart(4, '0'),
+      '教科': '社会', '学年': '共通', '表示順': index + 1, '章': item.chapter, '単元番号': item.step, '単元名': item.title, '難度': '',
+      '教科書または進行表の種類': textbook, '元ファイル名': '26F進行表オモテ【中学社会】.xls'
+    };
+  });
+}
+
 function ensureScienceSocialUnits_() {
   const markerKey = 'FORESTA_SCI_SOC_UNITS_V2', properties = PropertiesService.getScriptProperties();
   if (properties.getProperty(markerKey) === 'done') return;
