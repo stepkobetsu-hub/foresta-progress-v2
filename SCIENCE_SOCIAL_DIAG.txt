@@ -4,30 +4,457 @@ exit_code=0
 > test
 > node tests/domain.test.mjs && node tests/gas-pure.test.mjs && node tests/admin-entry.test.mjs && node tests/admin-range-entry.test.mjs && node tests/teacher-experience.test.mjs && node tests/japanese-progress.test.mjs
 
+domain tests: five-subject progression assertions passed
+GAS pure tests: 30 assertions passed
+admin entry tests: 11 assertions passed
+admin range entry tests: 18 assertions passed
 node:internal/modules/run_main:123
     triggerUncaughtException(
     ^
 
-AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
-+ actual - expected
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /options\.subject !== "国語" && u\.ctResult/. Input:
 
-  [
-    '国語',
-    '英語',
-    '数学',
-+   '理科',
-+   '社会'
-  ]
+'import { CONFIG } from "./config.js";\n' +
+  'import { SUBJECTS, TRACKED_SUBJECTS, formatProgressGroupLabel, formatProgressUnitNumber, homeworkSummary, progressGroupKey } from "./domain.js";\n' +
+  '\n' +
+  'const $ = (id) => document.getElementById(id);\n' +
+  `const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));\n` +
+  'const fmtDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value)) : "未設定";\n' +
+  'const fmtShortDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" }).format(new Date(value)) : "";\n' +
+  'const fmtDateTime = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—";\n' +
+  'const searchFold = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60)).replace(/[\\s　]+/g, "");\n' +
+  'const matchesStudentDirectoryQuery = (student, query) => {\n' +
+  '  const tokens = String(query ?? "").normalize("NFKC").trim().split(/[\\s　]+/).filter(Boolean);\n' +
+  '  if (!tokens.length) return false;\n' +
+  '  const haystack = searchFold([student.studentId, student.name, student.reading, student.romaji, student.campus, student.grade, student.school].join(" "));\n' +
+  '  return tokens.every((token) => haystack.includes(searchFold(token)));\n' +
+  '};\n' +
+  '\n' +
+  'const state = {\n' +
+  '  role: "student",\n' +
+  '  device: "",\n' +
+  '  session: null,\n' +
+  '  adminToken: "",\n' +
+  '  selectedStudents: [],\n' +
+  '  activeStudentId: "",\n' +
+  '  teacherStudentCache: {},\n' +
+  '  activeView: "home",\n' +
+  '  dashboard: null,\n' +
+  '  progressionCache: new Map(),\n' +
+  '  progressionPromises: new Map(),\n' +
+  '};\n' +
+  '\n' +
+  'const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache" };\n' +
+  'const DEFAULT_HOMEWORK = {\n' +
+  '  数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],\n' +
+  '  英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],\n' +
+  '};\n' +
+  'const REPEAT_HOMEWORK = {\n' +
+  '  数学: ["TRYの赤×直し", "エクササイズの赤×直し"],\n' +
+  '  英語: ["KEYWORDSの暗記", "TRYの赤×直し", "エクササイズの赤×直し"],\n' +
+  '};\n' +
+  'let teacherSearchTimer = 0;\n' +
+  'const PROGRESSION_CACHE_TTL_MS = 120000;\n' +
+  '\n' +
+  'function progressionCacheKey(options = {}) {\n' +
+  '  if (options.mode === "range") return ["range", options.school || "", options.grade || "", options.subject || "", options.testId || "", options.rangeType || ""].join("|");\n' +
+  '  const studentId = options.studentId || state.dashboard?.student?.studentId || state.session?.studentId || state.session?.loginId || "self";\n' +
+  '  return ["progress", studentId, options.subject || ""].join("|");\n' +
+  '}\n' +
+  '\n' +
+  'function readProgressionCache(options) {\n' +
+  '  const entry = state.progressionCache.get(progressionCacheKey(options));\n' +
+  '  if (!entry || Date.now() - entry.savedAt > PROGRESSION_CACHE_TTL_MS) return null;\n' +
+  '  return entry.data;\n' +
+  '}\n' +
+  '\n' +
+  'function writeProgressionCache(options, data) {\n' +
+  '  state.progressionCache.set(progressionCacheKey(options), { data, savedAt: Date.now() });\n' +
+  '  return data;\n' +
+  '}\n' +
+  '\n' +
+  'function invalidateProgressionCache(options = {}) {\n' +
+  '  const key = progressionCacheKey(options);\n' +
+  '  state.progressionCache.delete(key);\n' +
+  '  state.progressionPromises.delete(key);\n' +
+  '}\n' +
+  '\n' +
+  'async function loadProgression(options, { force = false } = {}) {\n' +
+  '  const key = progressionCacheKey(options);\n' +
+  '  if (!force) {\n' +
+  '    const cached = readProgressionCache(options);\n' +
+  '    if (cached) return cached;\n' +
+  '    if (state.progressionPromises.has(key)) return state.progressionPromises.get(key);\n' +
+  '  }\n' +
+  '  const action = options.mode === "range" ? "getRangeEditor" : "getProgression";\n' +
+  '  const request = api(action, options, { silent: true })\n' +
+  '    .then((data) => writeProgressionCache(options, data))\n' +
+  '    .finally(() => state.progressionPromises.delete(key));\n' +
+  '  state.progressionPromises.set(key, request);\n' +
+  '  return request;\n' +
+  '}\n' +
+  '\n' +
+  'function prefetchProgression(options) {\n' +
+  '  loadProgression(options).catch(() => {});\n' +
+  '}\n' +
+  '\n' +
+  'async function api(action, payload = {}, { silent = false } = {}) {\n' +
+  '  if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");\n' +
+  '  const controller = new AbortController();\n' +
+  '  const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);\n' +
+  '  if (!silent) status("読み込み中…");\n' +
+  '  try {\n' +
+  '    const response = await fetch(CONFIG.apiUrl, {\n' +
+  '      method: "POST",\n' +
+  '      headers: { "Content-Type": "text/plain;charset=utf-8" },\n' +
+  '      body: JSON.stringify({ action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload }),\n' +
+  '      redirect: "follow",\n' +
+  '      signal: controller.signal,\n' +
+  '    });\n' +
+  '    const result = await response.json();\n' +
+  '    if (!response.ok || result.ok === false) throw new Error(result.message || "処理に失敗しました。");\n' +
+  '    status("");\n' +
+  '    return result;\n' +
+  '  } catch (error) {\n' +
+  '    status("");\n' +
+  '    if (error.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");\n' +
+  '    throw error;\n' +
+  '  } finally {\n' +
+  '    clearTimeout(timer);\n' +
+  '  }\n' +
+  '}\n' +
+  '\n' +
+  'function status(message, isError = false) {\n' +
+  '  const el = $("globalStatus");\n' +
+  '  if (!message) return el.classList.add("hidden");\n' +
+  '  el.textContent = message;\n' +
+  '  el.classList.remove("hidden");\n' +
+  '  el.style.background = isError ? "#fee2e2" : "#edf7ff";\n' +
+  '  el.style.color = isError ? "#991b1b" : "#1d4f7a";\n' +
+  '}\n' +
+  '\n' +
+  'function loading() {\n' +
+  '  $("content").replaceChildren($("loadingTemplate").content.cloneNode(true));\n' +
+  '}\n' +
+  '\n' +
+  'function showError(error, retry) {\n' +
+  '  $("content").innerHTML = `<div class="card dangerCard"><h2>読み込めませんでした</h2><p>${esc(error.message || error)}</p>${retry ? \'<button id="retryButton" class="primaryBtn">再試行</button>\' : ""}</div>`;\n' +
+  '  if (retry) $("retryButton").onclick = retry;\n' +
+  '}\n' +
+  '\n' +
+  'function persistSession() {\n' +
+  '  const data = JSON.stringify(state.session);\n' +
+  '  sessionStorage.removeItem(KEYS.session);\n' +
+  '  localStorage.removeItem(KEYS.local);\n' +
+  '  if (state.device === "personal" && $("rememberLogin")?.checked) localStorage.setItem(KEYS.local, data);\n' +
+  '  else sessionStorage.setItem(KEYS.session, data);\n' +
+  '  sessionStorage.setItem(KEYS.device, state.device);\n' +
+  '}\n' +
+  '\n' +
+  'function clearSessions() {\n' +
+  '  sessionStorage.removeItem(KEYS.dashboard);\n' +
+  '  localStorage.removeItem(KEYS.local);\n' +
+  '  localStorage.removeItem(KEYS.admin);\n' +
+  '  sessionStorage.removeItem(KEYS.session);\n' +
+  '  localStorage.removeItem("forestaStudentAuth");\n' +
+  '  localStorage.removeItem("forestaTeacherAuth");\n' +
+  '  sessionStorage.removeItem("forestaStudentAuth");\n' +
+  '  sessionStorage.removeItem("forestaTeacherAuth");\n' +
+  '  state.session = null;\n' +
+  '  state.adminToken = "";\n' +
+  '  state.teacherStudentCache = {};\n' +
+  '}\n' +
+  '\n' +
+  'function persistAdminSession() {\n' +
+  '  localStorage.setItem(KEYS.admin, JSON.stringify({ session: state.session, adminToken: state.adminToken }));\n' +
+  '}\n' +
+  '\n' +
+  'function navItems() {\n' +
+  '  if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];\n' +
+  '  if (state.role === "teacher") return [["search", "生徒を選ぶ"], ["today", "本日の授業"], ["selected", "選択中の生徒"]];\n' +
+  '  return [["admin", "本日の速報"], ["ranges", "進行表・テスト範囲設定"], ["training", "特訓部屋"], ["students", "全生徒"]];\n' +
+  '}\n' +
+  '\n' +
+  'function renderShell() {\n' +
+  '  $("topAdminEntry")?.classList.remove("hidden");\n' +
+  '  $("loginView").classList.add("hidden");\n' +
+  '  $("workspace").classList.remove("hidden");\n' +
+  '  $("userName").textContent = state.session?.name || "—";\n' +
+  '  $("userMeta").textContent = `${state.role === "student" ? "生徒" : state.role === "teacher" ? "講師" : "管理者"} / ${state.session?.campus || state.session?.grade || ""}`;\n' +
+  '  $("userInitial").textContent = (state.session?.name || "F").slice(0, 1);\n' +
+  '  $("navItems").innerHTML = navItems().map(([id, label]) => `<button class="navButton ${state.activeView === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("");\n' +
+  '  $("navItems").querySelectorAll("button").forEach((button) => button.onclick = () => openView(button.dataset.view));\n' +
+  '}\n' +
+  '\n' +
+  'async function openView(view) {\n' +
+  '  state.activeView = view;\n' +
+  '  renderShell();\n' +
+  '  loading();\n' +
+  '  try {\n' +
+  '    if (state.role === "student") await renderStudent(view);\n' +
+  '    else if (state.role === "teacher") await renderTeacher(view);\n' +
+  '    else await renderAdmin(view);\n' +
+  '  } catch (error) {\n' +
+  '    showError(error, () => openView(view));\n' +
+  '  }\n' +
+  '}\n' +
+  '\n' +
+  'function metricCard(title, value, sub = "", tone = "") {\n' +
+  '  return `<article class="card span4 ${tone}"><p class="cardTitle">${esc(title)}</p><div class="bigValue">${esc(value)}</div>${sub ? `<p class="muted">${esc(sub)}</p>` : ""}</article>`;\n' +
+  '}\n' +
+  '\n' +
+  'function subjectProgressClass(subject) {\n' +
+  '  return ({ 英語: "english", 数学: "math", 国語: "japanese", 理科: "science", 社会: "social" })[subject] || "other";\n' +
+  '}\n' +
+  '\n' +
+  'function mappedRoundWidth(percent) {\n' +
+  '  const value = Math.max(0, Math.min(300, Number(percent || 0)));\n' +
+  '  if (value <= 100) return value * 0.7;\n' +
+  '  if (value <= 200) return 70 + (value - 100) * 0.15;\n' +
+  '  return 85 + (value - 200) * 0.15;\n' +
+  '}\n' +
+  '\n' +
+  'function studentRoundProgressHtml(data) {\n' +
+  '  const rows = (data.progress || []).filter((row) => row.roundProgress && Number(row.roundProgress.targetCount) > 0);\n' +
+  '  if (!rows.length) return "";\n' +
+  '  const totalTarget = rows.reduce((sum, row) => sum + Number(row.roundProgress.targetCount || 0), 0);\n' +
+  '  const roundCounts = [1, 2, 3].map((round) => rows.reduce((sum, row) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0));\n' +
+  '  const totalDone = roundCounts.reduce((sum, value) => sum + value, 0);\n' +
+  '  const overallPercent = totalTarget ? Math.round(totalDone / totalTarget * 100) : 0;\n' +
+  '  const roundBars = roundCounts.map((count, index) => {\n' +
+  '    const pct = totalTarget ? Math.round(count / totalTarget * 100) : 0;\n' +
+  '    return `<div class="roundProgressLine round${index + 1}"><span>${index + 1}周目</span><i><b style="width:${Math.min(100, pct)}%"></b></i><strong>${pct}%</strong></div>`;\n' +
+  '  }).join("");\n' +
+  '  const subjectBars = rows.map((row) => {\n' +
+  '    const target = Number(row.roundProgress.targetCount || 0);\n' +
+  '    const done = [1, 2, 3].reduce((sum, round) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0);\n' +
+  '    const pct = target ? Math.round(done / target * 100) : 0;\n' +
+  '    return `<div class="subjectRoundBar ${subjectProgr'... 74835 more characters
 
-    at file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/tests/domain.test.mjs:46:8
+    at file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/tests/teacher-experience.test.mjs:68:8
     at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
   generatedMessage: true,
   code: 'ERR_ASSERTION',
-  actual: [ '国語', '英語', '数学', '理科', '社会' ],
-  expected: [ '国語', '英語', '数学' ],
-  operator: 'deepStrictEqual',
+  actual: 'import { CONFIG } from "./config.js";\n' +
+    'import { SUBJECTS, TRACKED_SUBJECTS, formatProgressGroupLabel, formatProgressUnitNumber, homeworkSummary, progressGroupKey } from "./domain.js";\n' +
+    '\n' +
+    'const $ = (id) => document.getElementById(id);\n' +
+    `const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));\n` +
+    'const fmtDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value)) : "未設定";\n' +
+    'const fmtShortDate = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" }).format(new Date(value)) : "";\n' +
+    'const fmtDateTime = (value) => value ? new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—";\n' +
+    'const searchFold = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60)).replace(/[\\s　]+/g, "");\n' +
+    'const matchesStudentDirectoryQuery = (student, query) => {\n' +
+    '  const tokens = String(query ?? "").normalize("NFKC").trim().split(/[\\s　]+/).filter(Boolean);\n' +
+    '  if (!tokens.length) return false;\n' +
+    '  const haystack = searchFold([student.studentId, student.name, student.reading, student.romaji, student.campus, student.grade, student.school].join(" "));\n' +
+    '  return tokens.every((token) => haystack.includes(searchFold(token)));\n' +
+    '};\n' +
+    '\n' +
+    'const state = {\n' +
+    '  role: "student",\n' +
+    '  device: "",\n' +
+    '  session: null,\n' +
+    '  adminToken: "",\n' +
+    '  selectedStudents: [],\n' +
+    '  activeStudentId: "",\n' +
+    '  teacherStudentCache: {},\n' +
+    '  activeView: "home",\n' +
+    '  dashboard: null,\n' +
+    '  progressionCache: new Map(),\n' +
+    '  progressionPromises: new Map(),\n' +
+    '};\n' +
+    '\n' +
+    'const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache" };\n' +
+    'const DEFAULT_HOMEWORK = {\n' +
+    '  数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],\n' +
+    '  英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],\n' +
+    '};\n' +
+    'const REPEAT_HOMEWORK = {\n' +
+    '  数学: ["TRYの赤×直し", "エクササイズの赤×直し"],\n' +
+    '  英語: ["KEYWORDSの暗記", "TRYの赤×直し", "エクササイズの赤×直し"],\n' +
+    '};\n' +
+    'let teacherSearchTimer = 0;\n' +
+    'const PROGRESSION_CACHE_TTL_MS = 120000;\n' +
+    '\n' +
+    'function progressionCacheKey(options = {}) {\n' +
+    '  if (options.mode === "range") return ["range", options.school || "", options.grade || "", options.subject || "", options.testId || "", options.rangeType || ""].join("|");\n' +
+    '  const studentId = options.studentId || state.dashboard?.student?.studentId || state.session?.studentId || state.session?.loginId || "self";\n' +
+    '  return ["progress", studentId, options.subject || ""].join("|");\n' +
+    '}\n' +
+    '\n' +
+    'function readProgressionCache(options) {\n' +
+    '  const entry = state.progressionCache.get(progressionCacheKey(options));\n' +
+    '  if (!entry || Date.now() - entry.savedAt > PROGRESSION_CACHE_TTL_MS) return null;\n' +
+    '  return entry.data;\n' +
+    '}\n' +
+    '\n' +
+    'function writeProgressionCache(options, data) {\n' +
+    '  state.progressionCache.set(progressionCacheKey(options), { data, savedAt: Date.now() });\n' +
+    '  return data;\n' +
+    '}\n' +
+    '\n' +
+    'function invalidateProgressionCache(options = {}) {\n' +
+    '  const key = progressionCacheKey(options);\n' +
+    '  state.progressionCache.delete(key);\n' +
+    '  state.progressionPromises.delete(key);\n' +
+    '}\n' +
+    '\n' +
+    'async function loadProgression(options, { force = false } = {}) {\n' +
+    '  const key = progressionCacheKey(options);\n' +
+    '  if (!force) {\n' +
+    '    const cached = readProgressionCache(options);\n' +
+    '    if (cached) return cached;\n' +
+    '    if (state.progressionPromises.has(key)) return state.progressionPromises.get(key);\n' +
+    '  }\n' +
+    '  const action = options.mode === "range" ? "getRangeEditor" : "getProgression";\n' +
+    '  const request = api(action, options, { silent: true })\n' +
+    '    .then((data) => writeProgressionCache(options, data))\n' +
+    '    .finally(() => state.progressionPromises.delete(key));\n' +
+    '  state.progressionPromises.set(key, request);\n' +
+    '  return request;\n' +
+    '}\n' +
+    '\n' +
+    'function prefetchProgression(options) {\n' +
+    '  loadProgression(options).catch(() => {});\n' +
+    '}\n' +
+    '\n' +
+    'async function api(action, payload = {}, { silent = false } = {}) {\n' +
+    '  if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");\n' +
+    '  const controller = new AbortController();\n' +
+    '  const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);\n' +
+    '  if (!silent) status("読み込み中…");\n' +
+    '  try {\n' +
+    '    const response = await fetch(CONFIG.apiUrl, {\n' +
+    '      method: "POST",\n' +
+    '      headers: { "Content-Type": "text/plain;charset=utf-8" },\n' +
+    '      body: JSON.stringify({ action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload }),\n' +
+    '      redirect: "follow",\n' +
+    '      signal: controller.signal,\n' +
+    '    });\n' +
+    '    const result = await response.json();\n' +
+    '    if (!response.ok || result.ok === false) throw new Error(result.message || "処理に失敗しました。");\n' +
+    '    status("");\n' +
+    '    return result;\n' +
+    '  } catch (error) {\n' +
+    '    status("");\n' +
+    '    if (error.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");\n' +
+    '    throw error;\n' +
+    '  } finally {\n' +
+    '    clearTimeout(timer);\n' +
+    '  }\n' +
+    '}\n' +
+    '\n' +
+    'function status(message, isError = false) {\n' +
+    '  const el = $("globalStatus");\n' +
+    '  if (!message) return el.classList.add("hidden");\n' +
+    '  el.textContent = message;\n' +
+    '  el.classList.remove("hidden");\n' +
+    '  el.style.background = isError ? "#fee2e2" : "#edf7ff";\n' +
+    '  el.style.color = isError ? "#991b1b" : "#1d4f7a";\n' +
+    '}\n' +
+    '\n' +
+    'function loading() {\n' +
+    '  $("content").replaceChildren($("loadingTemplate").content.cloneNode(true));\n' +
+    '}\n' +
+    '\n' +
+    'function showError(error, retry) {\n' +
+    '  $("content").innerHTML = `<div class="card dangerCard"><h2>読み込めませんでした</h2><p>${esc(error.message || error)}</p>${retry ? \'<button id="retryButton" class="primaryBtn">再試行</button>\' : ""}</div>`;\n' +
+    '  if (retry) $("retryButton").onclick = retry;\n' +
+    '}\n' +
+    '\n' +
+    'function persistSession() {\n' +
+    '  const data = JSON.stringify(state.session);\n' +
+    '  sessionStorage.removeItem(KEYS.session);\n' +
+    '  localStorage.removeItem(KEYS.local);\n' +
+    '  if (state.device === "personal" && $("rememberLogin")?.checked) localStorage.setItem(KEYS.local, data);\n' +
+    '  else sessionStorage.setItem(KEYS.session, data);\n' +
+    '  sessionStorage.setItem(KEYS.device, state.device);\n' +
+    '}\n' +
+    '\n' +
+    'function clearSessions() {\n' +
+    '  sessionStorage.removeItem(KEYS.dashboard);\n' +
+    '  localStorage.removeItem(KEYS.local);\n' +
+    '  localStorage.removeItem(KEYS.admin);\n' +
+    '  sessionStorage.removeItem(KEYS.session);\n' +
+    '  localStorage.removeItem("forestaStudentAuth");\n' +
+    '  localStorage.removeItem("forestaTeacherAuth");\n' +
+    '  sessionStorage.removeItem("forestaStudentAuth");\n' +
+    '  sessionStorage.removeItem("forestaTeacherAuth");\n' +
+    '  state.session = null;\n' +
+    '  state.adminToken = "";\n' +
+    '  state.teacherStudentCache = {};\n' +
+    '}\n' +
+    '\n' +
+    'function persistAdminSession() {\n' +
+    '  localStorage.setItem(KEYS.admin, JSON.stringify({ session: state.session, adminToken: state.adminToken }));\n' +
+    '}\n' +
+    '\n' +
+    'function navItems() {\n' +
+    '  if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];\n' +
+    '  if (state.role === "teacher") return [["search", "生徒を選ぶ"], ["today", "本日の授業"], ["selected", "選択中の生徒"]];\n' +
+    '  return [["admin", "本日の速報"], ["ranges", "進行表・テスト範囲設定"], ["training", "特訓部屋"], ["students", "全生徒"]];\n' +
+    '}\n' +
+    '\n' +
+    'function renderShell() {\n' +
+    '  $("topAdminEntry")?.classList.remove("hidden");\n' +
+    '  $("loginView").classList.add("hidden");\n' +
+    '  $("workspace").classList.remove("hidden");\n' +
+    '  $("userName").textContent = state.session?.name || "—";\n' +
+    '  $("userMeta").textContent = `${state.role === "student" ? "生徒" : state.role === "teacher" ? "講師" : "管理者"} / ${state.session?.campus || state.session?.grade || ""}`;\n' +
+    '  $("userInitial").textContent = (state.session?.name || "F").slice(0, 1);\n' +
+    '  $("navItems").innerHTML = navItems().map(([id, label]) => `<button class="navButton ${state.activeView === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("");\n' +
+    '  $("navItems").querySelectorAll("button").forEach((button) => button.onclick = () => openView(button.dataset.view));\n' +
+    '}\n' +
+    '\n' +
+    'async function openView(view) {\n' +
+    '  state.activeView = view;\n' +
+    '  renderShell();\n' +
+    '  loading();\n' +
+    '  try {\n' +
+    '    if (state.role === "student") await renderStudent(view);\n' +
+    '    else if (state.role === "teacher") await renderTeacher(view);\n' +
+    '    else await renderAdmin(view);\n' +
+    '  } catch (error) {\n' +
+    '    showError(error, () => openView(view));\n' +
+    '  }\n' +
+    '}\n' +
+    '\n' +
+    'function metricCard(title, value, sub = "", tone = "") {\n' +
+    '  return `<article class="card span4 ${tone}"><p class="cardTitle">${esc(title)}</p><div class="bigValue">${esc(value)}</div>${sub ? `<p class="muted">${esc(sub)}</p>` : ""}</article>`;\n' +
+    '}\n' +
+    '\n' +
+    'function subjectProgressClass(subject) {\n' +
+    '  return ({ 英語: "english", 数学: "math", 国語: "japanese", 理科: "science", 社会: "social" })[subject] || "other";\n' +
+    '}\n' +
+    '\n' +
+    'function mappedRoundWidth(percent) {\n' +
+    '  const value = Math.max(0, Math.min(300, Number(percent || 0)));\n' +
+    '  if (value <= 100) return value * 0.7;\n' +
+    '  if (value <= 200) return 70 + (value - 100) * 0.15;\n' +
+    '  return 85 + (value - 200) * 0.15;\n' +
+    '}\n' +
+    '\n' +
+    'function studentRoundProgressHtml(data) {\n' +
+    '  const rows = (data.progress || []).filter((row) => row.roundProgress && Number(row.roundProgress.targetCount) > 0);\n' +
+    '  if (!rows.length) return "";\n' +
+    '  const totalTarget = rows.reduce((sum, row) => sum + Number(row.roundProgress.targetCount || 0), 0);\n' +
+    '  const roundCounts = [1, 2, 3].map((round) => rows.reduce((sum, row) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0));\n' +
+    '  const totalDone = roundCounts.reduce((sum, value) => sum + value, 0);\n' +
+    '  const overallPercent = totalTarget ? Math.round(totalDone / totalTarget * 100) : 0;\n' +
+    '  const roundBars = roundCounts.map((count, index) => {\n' +
+    '    const pct = totalTarget ? Math.round(count / totalTarget * 100) : 0;\n' +
+    '    return `<div class="roundProgressLine round${index + 1}"><span>${index + 1}周目</span><i><b style="width:${Math.min(100, pct)}%"></b></i><strong>${pct}%</strong></div>`;\n' +
+    '  }).join("");\n' +
+    '  const subjectBars = rows.map((row) => {\n' +
+    '    const target = Number(row.roundProgress.targetCount || 0);\n' +
+    '    const done = [1, 2, 3].reduce((sum, round) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0);\n' +
+    '    const pct = target ? Math.round(done / target * 100) : 0;\n' +
+    '    return `<div class="subjectRoundBar ${subjectProgr'... 74835 more characters,
+  expected: /options\.subject !== "国語" && u\.ctResult/,
+  operator: 'match',
   diff: 'simple'
 }
 
