@@ -608,13 +608,13 @@ async function openProgress(options) {
     const rows = (data.units || []).map((u) => {
       const classes = [u.predictedOutside ? "predictedOutside" : "", u.decidedOutside ? "decidedOutside" : "", u.previous ? "previous" : "", u.schoolPosition ? "schoolPosition" : "", u.omittable ? "omittable" : ""].filter(Boolean).join(" ");
       const effectiveOutside = data.summary?.rangeType === "決定" ? u.decidedOutside : data.summary?.rangeType === "予想" ? u.predictedOutside : false;
-      const rangeLocked = options.mode === "lesson" && state.dashboard?.student?.grade !== "中3" && effectiveOutside;
+      const rangeLocked = options.mode === "lesson" && effectiveOutside;
       const chapter = progressGroupKey(u);
       const groupHeader = editable && chapter && chapter !== previousChapter ? `<div class="unitGroupHeader"><label class="unitGroupToggle"><input type="checkbox" class="chapterToggle" data-chapter="${esc(chapter)}"><span>${esc(formatProgressGroupLabel(options.subject, chapter))}</span><small>このまとまりを選択／解除</small></label><span class="unitGroupCount" data-chapter="${esc(chapter)}">0/0</span></div>` : "";
       previousChapter = chapter;
       const displayNumber = formatProgressUnitNumber(options.subject, u);
       const chapterIsIncluded = options.subject === "英語" && displayNumber !== String(u.unitNumber ?? "").trim();
-      const details = [chapterIsIncluded ? "" : u.chapter, u.difficulty ? `難度 ${u.difficulty}` : "", rangeLocked ? "中1・中2は範囲外" : ""].filter(Boolean).join(" / ");
+      const details = [chapterIsIncluded ? "" : u.chapter, u.difficulty ? `難度 ${u.difficulty}` : "", rangeLocked ? "次回テスト範囲外" : ""].filter(Boolean).join(" / ");
       const lessonDates = (u.lessonDates || []).map((date) => fmtShortDate(date)).filter(Boolean);
       const dateHistory = lessonDates.length ? `<span class="lessonDateHistory" title="授業日：${esc(lessonDates.join("、"))}"><small>授業日</small>${lessonDates.map((date) => `<b>${esc(date)}</b>`).join("")}</span>` : "";
       const lessonSelectable = !rangeLocked || canOutsideOverride;
