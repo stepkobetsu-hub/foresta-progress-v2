@@ -38,22 +38,23 @@ jobs:
         run: |
           cp apps-script/Code.gs /tmp/Code.js
           node --check /tmp/Code.js
-      - name: Verify unit data
+      - name: Verify science/social hooks
         shell: bash
         run: |
-          test "$(wc -l < data/science-social-units.tsv)" -eq 368
-          grep -q $'^sci-g1-tosho-' data/science-social-units.tsv
-          grep -q $'^soc-civics-tosho-' data/science-social-units.tsv
+          grep -q '理科.*社会' domain.js
+          grep -q 'FORESTA_SCI_SOC_UNITS_V2' apps-script/Code.gs
+          grep -q "version: '2.2.0'" apps-script/Code.gs
+          grep -q 'TRACKED_SUBJECTS.map((subject)' app.js
       - name: Commit verified files
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- domain.js app.js styles.css index.html apps-script/Code.gs data/science-social-units.tsv; then
+          if git diff --quiet -- domain.js app.js styles.css index.html apps-script/Code.gs; then
             echo "No source changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add domain.js app.js styles.css index.html apps-script/Code.gs data/science-social-units.tsv
+          git add domain.js app.js styles.css index.html apps-script/Code.gs
           git commit -m "Add science and social progressions"
           git push origin HEAD:main
