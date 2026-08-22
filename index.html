@@ -9,12 +9,13 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css?v=20260822-usability">
+  <link rel="stylesheet" href="rounds-addon.css?v=20260823-1">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="フォレスタ進捗管理 ホーム"><span class="brandMark">F</span><span>フォレスタ進捗管理</span></a>
     <div style="display:flex;align-items:center;gap:14px">
-      <button type="button" onclick="document.getElementById('adminEntry')?.click()" style="border:0;background:transparent;padding:0;color:#115e59;font-size:.88rem;font-weight:800;cursor:pointer">管理者画面へ</button>
+      <button id="topAdminEntry" type="button" onclick="document.getElementById('adminEntry')?.click()" style="border:0;background:transparent;padding:0;color:#115e59;font-size:.88rem;font-weight:800;cursor:pointer">管理者画面へ</button>
       <a class="goalLink" href="https://stepkobetsu-hub.github.io/foresta-step-progress/" target="_blank" rel="noopener">ステップ＆ゴールへ ↗</a>
     </div>
   </header>
@@ -69,6 +70,6 @@
 
   <dialog id="modal" class="modal"><div class="modalFrame"><button id="modalClose" class="modalClose" type="button" aria-label="閉じる">×</button><div id="modalBody"></div></div></dialog>
   <template id="loadingTemplate"><div class="loadingCard"><span class="spinner"></span><p>読み込み中です…</p></div></template>
-  <script type="module" src="app.js?v=20260822-usability"></script>
+  <script type="module" src="app-rounds-bootstrap.js?v=20260823-1"></script>
 </body>
 </html>
