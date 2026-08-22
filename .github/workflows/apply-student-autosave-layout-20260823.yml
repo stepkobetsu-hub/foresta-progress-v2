@@ -1,0 +1,53 @@
+name: Apply student autosave layout 2026-08-23
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - student-autosave-layout-trigger.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foresta-progress-v2-student-autosave-layout
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply guarded update
+        run: node scripts/apply-20260823-student-autosave-layout.mjs
+
+      - name: Run existing tests
+        run: npm test
+
+      - name: Parse-check app.js
+        run: node --check app.js
+
+      - name: Commit verified files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html app.js styles.css; then
+            echo "No source changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html app.js styles.css
+          git commit -m "Fix student homework layout and autosave targets"
+          git push origin HEAD:main
