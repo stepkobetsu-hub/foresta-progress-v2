@@ -28,7 +28,7 @@ const state = {
   progressionPromises: new Map(),
 };
 
-const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode" };
+const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache" };
 const DEFAULT_HOMEWORK = {
   数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],
   英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
@@ -136,6 +136,7 @@ function persistSession() {
 }
 
 function clearSessions() {
+  sessionStorage.removeItem(KEYS.dashboard);
   localStorage.removeItem(KEYS.local);
   localStorage.removeItem(KEYS.admin);
   sessionStorage.removeItem(KEYS.session);
@@ -159,7 +160,7 @@ function navItems() {
 }
 
 function renderShell() {
-  $("topAdminEntry")?.classList.add("hidden");
+  $("topAdminEntry")?.classList.remove("hidden");
   $("loginView").classList.add("hidden");
   $("workspace").classList.remove("hidden");
   $("userName").textContent = state.session?.name || "—";
@@ -221,15 +222,35 @@ function adminRangeCta() {
   return `<section class="adminRangeCta" aria-labelledby="adminRangeCtaTitle"><div><span class="adminRangeKicker">管理者アプリの中心機能</span><h1 id="adminRangeCtaTitle">進行表・テスト範囲設定</h1><p>学校・学年・科目・次回テストを選び、進行表全体から予想範囲または決定範囲を設定します。</p></div><button id="openRangeSettingsPrimary" class="adminRangeCtaButton" type="button">進行表・テスト範囲設定を開く</button></section>`;
 }
 
+function cacheStudentDashboard(data) {
+  try {
+    if (!data?.student?.studentId) return;
+    sessionStorage.setItem(KEYS.dashboard, JSON.stringify({ studentId: data.student.studentId, savedAt: Date.now(), data }));
+  } catch {}
+}
+
+function readCachedStudentDashboard(studentId, maxAgeMs = 120000) {
+  try {
+    const raw = sessionStorage.getItem(KEYS.dashboard);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (String(entry.studentId || "") !== String(studentId || "")) return null;
+    if (Date.now() - Number(entry.savedAt || 0) > maxAgeMs) return null;
+    return entry.data || null;
+  } catch { return null; }
+}
+
 async function renderStudent(view) {
   const data = state.dashboard || await api("getStudentDashboard");
   state.dashboard = data;
+  cacheStudentDashboard(data);
   if (view === "homework") return renderHomeworkPage(data);
   if (view === "scores") return renderScoresPage(data);
   const next = data.nextTest;
   const p = data.progress?.[0] || {};
   $("content").innerHTML = `
     <header class="pageHead"><div><h1>${esc(data.student.name)}さんの進捗</h1><p>${esc(data.student.school || "学校未登録")} / ${esc(data.student.grade)}</p></div><div class="actionRow">${TRACKED_SUBJECTS.map((s) => `<button class="secondaryBtn progressionButton" data-subject="${s}">${s}の進行表を見る・入力</button>`).join("")}</div></header>
+    <article class="card studentTargetPanel studentTargetTop"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
     ${studentRoundProgressHtml(data)}
     <section class="cardGrid">
       ${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)}` : "学校別日程が未登録です", next ? "" : "alert")}
@@ -237,7 +258,6 @@ async function renderStudent(view) {
       ${metricCard("学校との比較", p.comparison || "未設定", p.subject || "英語・数学から選択", p.comparison === "学校より先" ? "" : "alert")}
       <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
       <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml((data.homework || []).slice(0, 6), "student")}</div></article>
-      <article class="card span12 studentTargetPanel"><p class="cardTitle">目標点</p>${targetForm(data.targets || {}, next?.testId)}</article>
     </section>`;
   const studentProgressMode = data.capabilities?.studentRoundInput ? "student" : "view";
   $("content").querySelectorAll(".progressionButton").forEach((button) => {
@@ -246,7 +266,9 @@ async function renderStudent(view) {
     button.onpointerenter = () => prefetchProgression(options);
     button.onfocus = () => prefetchProgression(options);
   });
-  TRACKED_SUBJECTS.forEach((subject, index) => setTimeout(() => prefetchProgression({ subject, mode: studentProgressMode }), index * 120));
+  const prefetchSubjects = () => TRACKED_SUBJECTS.forEach((subject, index) => setTimeout(() => prefetchProgression({ subject, mode: studentProgressMode }), index * 220));
+  if ("requestIdleCallback" in window) requestIdleCallback(prefetchSubjects, { timeout: 1800 });
+  else setTimeout(prefetchSubjects, 900);
   bindTargetForm(next?.testId);
   bindHomeworkChecks();
 }
@@ -946,6 +968,12 @@ async function login(event) {
   } catch (error) { $("loginMessage").textContent = "IDまたはパスワードを確認してください。"; }
 }
 
+function finishBoot(showLogin = false) {
+  document.body.classList.remove("booting");
+  $("bootCover")?.classList.add("hidden");
+  if (showLogin) $("loginView")?.classList.remove("hidden");
+}
+
 async function restore() {
   const savedAdmin = localStorage.getItem(KEYS.admin);
   if (savedAdmin) {
@@ -959,23 +987,45 @@ async function restore() {
       state.activeView = "admin";
       persistAdminSession();
       renderShell();
-      openView("admin");
+      finishBoot(false);
+      await openView("admin");
       return;
     } catch { clearSessions(); }
   }
+
   const saved = localStorage.getItem(KEYS.local) || sessionStorage.getItem(KEYS.session);
-  if (!saved) return;
+  if (!saved) { finishBoot(true); return; }
   try {
     const parsed = JSON.parse(saved);
     state.session = parsed;
     state.role = parsed.role;
     state.device = parsed.deviceMode || sessionStorage.getItem(KEYS.device) || "personal";
+    state.activeView = state.role === "student" ? "home" : "search";
+
+    if (state.role === "student") {
+      const cached = readCachedStudentDashboard(parsed.studentId || parsed.loginId);
+      const resumePromise = api("resumeSession", {}, { silent: true });
+      const dashboardPromise = api("getStudentDashboard", {}, { silent: true });
+      if (cached) state.dashboard = cached;
+      const [resumeResult, dashboardResult] = await Promise.all([resumePromise, dashboardPromise]);
+      state.session = { ...parsed, ...resumeResult.session };
+      state.dashboard = dashboardResult;
+      cacheStudentDashboard(dashboardResult);
+      renderShell();
+      finishBoot(false);
+      await renderStudent("home");
+      return;
+    }
+
     const result = await api("resumeSession", {}, { silent: true });
     state.session = { ...parsed, ...result.session };
-    state.activeView = state.role === "student" ? "home" : "search";
     renderShell();
-    openView(state.activeView);
-  } catch { clearSessions(); }
+    finishBoot(false);
+    await openView(state.activeView);
+  } catch {
+    clearSessions();
+    finishBoot(true);
+  }
 }
 
 document.querySelectorAll(".roleTab").forEach((tab) => tab.onclick = () => {
@@ -997,7 +1047,7 @@ document.querySelectorAll(".deviceChoice").forEach((button) => button.onclick = 
 $("loginForm").addEventListener("submit", login);
 $("logoutButton").onclick = async () => { try { await api("logout", {}, { silent: true }); } catch {} clearSessions(); location.reload(); };
 $("adminEntry").onclick = openAdminReauth;
-$("topAdminEntry").onclick = openAdminReauth;
+$("topAdminEntry").onclick = () => { if (state.role === "admin" && state.adminToken) openView("admin"); else openAdminReauth(); };
 $("modalClose").onclick = closeModal;
 $("modal").addEventListener("click", (event) => { if (event.target === $("modal")) closeModal(); });
 

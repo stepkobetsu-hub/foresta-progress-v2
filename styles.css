@@ -82,3 +82,8 @@
 .homeworkSaveState{color:var(--muted)!important;font-size:.62rem!important}
 @media(max-width:1050px){.studentHomeworkPanel .studentHomeworkCard{grid-template-columns:1fr}.studentHomeworkPanel .studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.studentTargetPanel{width:100%}.studentHomeworkPanel .studentHomeworkTasks{grid-template-columns:1fr}}
+
+
+/* 2026-08-23: no-login-flash restore + target near top */
+.bootCover{position:fixed;inset:0;z-index:100;background:linear-gradient(180deg,#edf7f3,#fff);display:grid;place-items:center}.bootCover>div{display:grid;justify-items:center;gap:10px;color:var(--forest2);font-weight:900}.bootCover small{color:var(--muted);font-weight:700}.booting .loginLayout,.booting .workspace{visibility:hidden}.studentTargetTop{margin:0 0 16px;width:min(520px,100%)}
+@media(max-width:620px){.studentTargetTop{width:100%}}
