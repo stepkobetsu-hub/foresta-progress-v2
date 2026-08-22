@@ -19,19 +19,21 @@
     <div class="actions">
       <button id="copyCode" class="btn" disabled>① 最新 Code.gs をコピー</button>
       <a class="btn sub" href="https://script.google.com/home/projects/1-hDf82U2uQ1zVL7WBXTyXyXXJxWsJvBHeOiTLj-N0AG3NAqXZcp6wv0M/edit" target="_blank" rel="noopener">② Apps Scriptを開く ↗</a>
-      <a class="btn sub" href="https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec" target="_blank" rel="noopener">更新後にAPIを確認 ↗</a>
+      <button id="checkApi" class="btn sub" type="button">③ 3周API切替を確認</button>
     </div>
     <div class="steps">
       <div class="step"><b>Code.gs を全置換</b>Apps Scriptで <strong>Code.gs</strong> を開き、本文をすべて選択して、①でコピーした内容を貼り付けて保存してください。</div>
       <div class="step"><b>既存デプロイを編集</b>右上の <strong>デプロイ → デプロイを管理</strong> を開き、現在のWebアプリを選んで鉛筆アイコンを押します。</div>
       <div class="step"><b>「新バージョン」を選択してデプロイ</b>バージョン欄で <strong>新バージョン</strong> を選択し、説明を「3周進捗・範囲外確認・宿題UI 2026-08-23」などとして <strong>デプロイ</strong> を押してください。既存デプロイを更新するのでURLは変わりません。</div>
+      <div class="step"><b>③で本番切替を確認</b>「3周対応APIへ切替済み」と緑色で出れば完了です。</div>
     </div>
     <div class="warn"><strong>重要：</strong>「新しいデプロイ」を作らず、現在のデプロイID <span class="codeInfo">AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ</span> を更新してください。</div>
   </section>
 </main>
 <script>
+const API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec';
 (async()=>{
-  const status=document.getElementById('status'),button=document.getElementById('copyCode');
+  const status=document.getElementById('status'),button=document.getElementById('copyCode'),check=document.getElementById('checkApi');
   try{
     const response=await fetch('./apps-script/Code.gs?v=20260823-rounds',{cache:'no-store'});
     if(!response.ok)throw new Error('Code.gsを取得できませんでした');
@@ -43,8 +45,23 @@
     status.classList.add('done');
   }catch(error){status.textContent=error.message;status.classList.add('error')}
   button.onclick=async()=>{
-    try{await navigator.clipboard.writeText(window.latestCode);button.textContent='✓ コピーしました';status.textContent='コピー完了。② Apps Scriptを開いて Code.gs を全置換してください。';status.classList.add('done')}
-    catch{status.textContent='自動コピーできませんでした。ブラウザーのクリップボード許可を確認してください。';status.classList.add('error')}
+    try{await navigator.clipboard.writeText(window.latestCode);button.textContent='✓ コピーしました';status.textContent='コピー完了。② Apps Scriptを開いて Code.gs を全置換してください。';status.className='status done'}
+    catch{status.textContent='自動コピーできませんでした。ブラウザーのクリップボード許可を確認してください。';status.className='status error'}
+  };
+  check.onclick=async()=>{
+    check.disabled=true;status.textContent='本番APIを確認しています…';status.className='status';
+    try{
+      const response=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'saveStudentRoundProgress'}),redirect:'follow'});
+      const result=await response.json();
+      if(result && result.ok===false && String(result.message||'').includes('ログインの有効期限')){
+        status.textContent='✓ 3周対応APIへ切替済みです。本番デプロイ完了。';status.className='status done';
+      }else if(result && result.ok===false && String(result.message||'').includes('処理を実行できません')){
+        status.textContent='まだ旧APIです。Apps Scriptの既存デプロイを「新バージョン」に更新してください。';status.className='status error';
+      }else{
+        status.textContent='API応答はありましたが判定できませんでした。もう一度確認してください。';status.className='status error';
+      }
+    }catch(error){status.textContent='API確認に失敗しました：'+error.message;status.className='status error'}
+    finally{check.disabled=false}
   };
 })();
 </script>
