@@ -1,16 +1,16 @@
-name: Apply 2026-08-22 progress usability update
+name: Apply 2026-08-23 three-round backend update
 
 on:
   push:
     branches: [main]
     paths:
-      - scripts/apply-20260822-usability.mjs
+      - rounds-active-trigger-20260823.txt
 
 permissions:
   contents: write
 
 concurrency:
-  group: foresta-progress-v2-usability-20260822
+  group: foresta-progress-v2-rounds-active-20260823
   cancel-in-progress: false
 
 jobs:
@@ -29,22 +29,28 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply guarded patch
-        run: node scripts/apply-20260822-usability.mjs
+      - name: Apply guarded round patch
+        run: node scripts/apply-20260823-rounds-v2.mjs
 
       - name: Run existing tests
         run: npm test
 
-      - name: Commit verified files
+      - name: Parse-check browser JavaScript
+        run: node --check app.js
+
+      - name: Parse-check Apps Script
+        run: cp apps-script/Code.gs /tmp/foresta-code.js && node --check /tmp/foresta-code.js
+
+      - name: Commit verified source files
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- index.html app.js styles.css; then
+          if git diff --quiet -- app.js styles.css apps-script/Code.gs; then
             echo "No changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html app.js styles.css
-          git commit -m "Improve progress table usability and autosave"
+          git add app.js styles.css apps-script/Code.gs
+          git commit -m "Add three-round progress and range override flow"
           git push origin HEAD:main
