@@ -14,16 +14,18 @@ const CONFIG = Object.freeze({
 });
 
 const ACTIVE_SUBJECTS = ['国語', '数学', '英語', '理科', '社会'];
-const TRACKED_SUBJECTS = ['国語', '英語', '数学'];
+const TRACKED_SUBJECTS = ['国語', '英語', '数学', '理科', '社会'];
 let REQUEST_CACHE = {};
 
 function doGet(e) {
-  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.0.0', time: nowIso_() });
+  ensureScienceSocialUnits_();
+  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.1.0', time: nowIso_() });
 }
 
 function doPost(e) {
   try {
     REQUEST_CACHE = {};
+    ensureScienceSocialUnits_();
     const data = parseRequest_(e);
     const result = route_(data);
     return json_(Object.assign({ ok: true }, result || {}));
@@ -327,6 +329,35 @@ function replaceRows_(name, predicate, newObjects) {
   delete REQUEST_CACHE['objects:'+name];
 }
 
+function ensureScienceSocialUnits_() {
+  const properties = PropertiesService.getScriptProperties();
+  const markerKey = 'FORESTA_SCI_SOC_UNITS_V1';
+  if (properties.getProperty(markerKey) === 'done') return;
+  try {
+    const existingRows = objects_('単元マスタ');
+    const existingIds = new Set(existingRows.map(function(row) { return text_(row['単元ID']); }));
+    const alreadySeeded = existingRows.some(function(row) { return /^sci-/u.test(text_(row['単元ID'])); }) && existingRows.some(function(row) { return /^soc-/u.test(text_(row['単元ID'])); });
+    if (alreadySeeded) { properties.setProperty(markerKey, 'done'); return; }
+    const url = 'https://raw.githubusercontent.com/stepkobetsu-hub/foresta-progress-v2/main/data/science-social-units.tsv?v=20260823';
+    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    if (response.getResponseCode() !== 200) throw new Error('SCI_SOC_MASTER_FETCH_FAILED');
+    const rows = response.getContentText('UTF-8').split(/\r?\n/u).filter(Boolean).map(function(line) {
+      const cols = line.split('\t');
+      if (cols.length < 10) throw new Error('SCI_SOC_MASTER_INVALID');
+      return {
+        '単元ID': cols[0], '教科': cols[1], '学年': cols[2], '表示順': Number(cols[3] || 0), '章': cols[4],
+        '単元番号': cols[5], '単元名': cols[6], '難度': cols[7], '教科書または進行表の種類': cols[8], '元ファイル名': cols[9]
+      };
+    });
+    if (rows.length !== 368) throw new Error('SCI_SOC_MASTER_COUNT_MISMATCH');
+    const missing = rows.filter(function(row) { return !existingIds.has(text_(row['単元ID'])); });
+    if (missing.length) appendObjects_('単元マスタ', missing);
+    properties.setProperty(markerKey, 'done');
+  } catch (error) {
+    console.error('Science/social unit seed failed', error && error.stack ? error.stack : error);
+  }
+}
+
 function authorizeStudentAccess_(data) {
   const session = loadSession_(data.token);
   let studentId = text_(data.studentId || session.studentId);
@@ -366,15 +397,38 @@ function nextTestFor_(student) {
 }
 
 function unitsFor_(student, subject) {
+  const schoolKey = student.schoolKey || normalizeSchool_(student.school);
+  const alternateSchool = ['志段味中', '吉根中'].indexOf(schoolKey) >= 0;
   let textbook = '標準版';
   if (subject === '英語') {
-    const setting = objects_('学校別英語教科書設定').find(function(row) { return normalizeSchool_(row['学校名正規化キー']) === student.schoolKey; });
+    const setting = objects_('学校別英語教科書設定').find(function(row) { return normalizeSchool_(row['学校名正規化キー']) === schoolKey; });
     textbook = setting ? text_(setting['教科書']) : '';
+  } else if (subject === '理科') {
+    textbook = alternateSchool ? '啓林館' : '東書';
+  } else if (subject === '社会') {
+    textbook = alternateSchool ? '東書＋歴史教出' : '東書';
   }
   if (!textbook) return { textbook: '', units: [] };
   const cache = CacheService.getScriptCache(), key = 'UNITS_' + subject + '_' + student.grade + '_' + textbook;
   const hit = cache.get(key); if (hit) return { textbook: textbook, units: JSON.parse(hit) };
-  const units = objects_('単元マスタ').filter(function(row) { return text_(row['教科']) === subject && normalizeGrade_(row['学年']) === student.grade && text_(row['教科書または進行表の種類']) === textbook; }).map(function(row) { return { unitId: text_(row['単元ID']), subject: subject, grade: student.grade, displayOrder: Number(row['表示順'] || 0), chapter: text_(row['章']), unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']), difficulty: text_(row['難度']), textbook: textbook }; }).sort(function(a, b) { return a.displayOrder - b.displayOrder; });
+  const units = objects_('単元マスタ').filter(function(row) {
+    if (text_(row['教科']) !== subject) return false;
+    if (subject === '社会') {
+      if (text_(row['学年']) !== '共通') return false;
+      const kind = text_(row['教科書または進行表の種類']), chapter = text_(row['章']);
+      if (!alternateSchool) return kind === '東書';
+      return /^歴史/u.test(chapter) ? kind === '教出' : kind === '東書';
+    }
+    return normalizeGrade_(row['学年']) === student.grade && text_(row['教科書または進行表の種類']) === textbook;
+  }).map(function(row) {
+    let displayOrder = Number(row['表示順'] || 0);
+    const chapter = text_(row['章']);
+    if (subject === '社会') {
+      if (/^地理/u.test(chapter)) displayOrder += 1000;
+      else if (/^公民/u.test(chapter)) displayOrder += 2000;
+    }
+    return { unitId: text_(row['単元ID']), subject: subject, grade: student.grade, displayOrder: displayOrder, chapter: chapter, unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']), difficulty: text_(row['難度']), textbook: textbook };
+  }).sort(function(a, b) { return a.displayOrder - b.displayOrder; });
   if (JSON.stringify(units).length < 95000) cache.put(key, JSON.stringify(units), 21600);
   return { textbook: textbook, units: units };
 }
@@ -624,7 +678,7 @@ function saveStudentRoundProgress_(data) {
 }
 
 function saveCt_(data) {
-  const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),unitId=text_(data.unitId),result=text_(data.result),key=text_(data.idempotencyKey);if(subject==='国語'||['◎','〇','×'].indexOf(result)<0)throw new Error('INVALID_VALUE');const lessons=objects_('授業記録').filter(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject;}).sort(function(a,b){return new Date(b['授業日'])-new Date(a['授業日']);});if(!lessons.length)throw new Error('CT_NOT_PREVIOUS');const lessonId=text_(lessons[0]['授業ID']),previous=new Set(objects_('授業実施単元').filter(function(r){return text_(r['授業ID'])===lessonId;}).map(function(r){return text_(r['単元ID']);}));if(!previous.has(unitId))throw new Error('CT_NOT_PREVIOUS');const lock=LockService.getScriptLock();lock.waitLock(30000);try{const cts=objects_('CT記録');if(cts.some(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject&&text_(r['授業ID'])===lessonId;}))throw new Error('DUPLICATE_CT');const ctId=uuid_('CT'),now=new Date();appendObject_('CT記録',{'CTID':ctId,'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'結果':result,'実施日':now,'担当講師ID':session.loginId,'担当講師名':session.name,'冪等キー':key,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});if(result==='×')createTraining_(ctId,student,subject,unitId,session,now);return{saved:true,ctId:ctId};}finally{lock.releaseLock();}
+  const session=requireRole_(data,['teacher']),student=getActiveStudent_(data.studentId),subject=text_(data.subject),unitId=text_(data.unitId),result=text_(data.result),key=text_(data.idempotencyKey);if(['英語','数学'].indexOf(subject)<0||['◎','〇','×'].indexOf(result)<0)throw new Error('INVALID_VALUE');const lessons=objects_('授業記録').filter(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject;}).sort(function(a,b){return new Date(b['授業日'])-new Date(a['授業日']);});if(!lessons.length)throw new Error('CT_NOT_PREVIOUS');const lessonId=text_(lessons[0]['授業ID']),previous=new Set(objects_('授業実施単元').filter(function(r){return text_(r['授業ID'])===lessonId;}).map(function(r){return text_(r['単元ID']);}));if(!previous.has(unitId))throw new Error('CT_NOT_PREVIOUS');const lock=LockService.getScriptLock();lock.waitLock(30000);try{const cts=objects_('CT記録');if(cts.some(function(r){return text_(r['生徒ID'])===student.studentId&&text_(r['科目'])===subject&&text_(r['授業ID'])===lessonId;}))throw new Error('DUPLICATE_CT');const ctId=uuid_('CT'),now=new Date();appendObject_('CT記録',{'CTID':ctId,'授業ID':lessonId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'結果':result,'実施日':now,'担当講師ID':session.loginId,'担当講師名':session.name,'冪等キー':key,'作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});if(result==='×')createTraining_(ctId,student,subject,unitId,session,now);return{saved:true,ctId:ctId};}finally{lock.releaseLock();}
 }
 function createTraining_(ctId,student,subject,unitId,session,now){if(objects_('特訓部屋対応').some(function(r){return text_(r['CTID'])===ctId;}))return;const trainingId=uuid_('TRAINING');appendObject_('特訓部屋対応',{'特訓ID':trainingId,'CTID':ctId,'生徒ID':student.studentId,'科目':subject,'単元ID':unitId,'対応状況':'未対応','実施予定日':'','実施日':'','対応者ID':'','対応者名':'','備考':'','保護者連絡状況':'未連絡','作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});notifyTraining_(ctId,trainingId,student,subject,unitId,session,now);}
 function notifyTraining_(ctId,trainingId,student,subject,unitId,session,now){const eventKey='CT_FAIL|'+ctId;if(objects_('メール通知履歴').some(function(r){return text_(r['イベントキー'])===eventKey;}))return;const mode=setting_('EMAIL_SEND_MODE')||'SUPPRESS',unit=objects_('単元マスタ').find(function(r){return text_(r['単元ID'])===unitId;}),body=['生徒名: '+student.name,'生徒ID: '+student.studentId,'教室: '+student.campus,'学校名: '+student.school,'学年: '+student.grade,'教科: '+subject,'CT単元: '+(unit?text_(unit['単元名']):unitId),'CT結果: ×','実施日: '+todayKey_(),'担当講師: '+session.name,'特訓部屋対象になりました。'].join('\n');let status='送信抑止';if(mode==='SEND'){MailApp.sendEmail(CONFIG.TRAINING_EMAIL,'【フォレスタ進捗管理】CT×・特訓部屋対象',body);status='送信済み';}appendObject_('メール通知履歴',{'通知ID':uuid_('MAIL'),'イベントキー':eventKey,'通知種別':'CT×特訓部屋','宛先':CONFIG.TRAINING_EMAIL,'状態':status,'送信抑止':mode!=='SEND','作成日時':now,'更新日時':now,'操作者ID':session.loginId,'操作者名':session.name});}

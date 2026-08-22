@@ -1,5 +1,5 @@
 export const SUBJECTS = ["国語", "数学", "英語", "理科", "社会"];
-export const TRACKED_SUBJECTS = ["国語", "英語", "数学"];
+export const TRACKED_SUBJECTS = ["国語", "英語", "数学", "理科", "社会"];
 
 export function normalizeText(value) {
   return String(value ?? "").normalize("NFKC").replace(/[\s　]+/g, "").trim().toLowerCase();
@@ -115,7 +115,8 @@ export function formatProgressGroupLabel(subject, chapter) {
     if (previousGrade) return `${previousGrade[1]} UNIT ${previousGrade[2]}`;
     if (/^\d+$/u.test(value)) return `UNIT ${value}`;
   }
-  if (subject === "数学" && /^\d+$/u.test(value)) return `第${value}章`;
+  if ((subject === "数学" || subject === "理科") && /^\d+$/u.test(value)) return `第${value}章`;
+  if (subject === "理科") { const previous = value.match(/^\[([^\]]+)\]\s*(\d+)$/u); if (previous) return `${previous[1]} 第${previous[2]}章`; }
   return value;
 }
 

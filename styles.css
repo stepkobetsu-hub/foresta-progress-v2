@@ -117,3 +117,10 @@
 .studentHomeworkMeta>small{font-size:.61rem!important}
 @media(max-width:1050px){.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))}.studentRoundCells{grid-template-columns:minmax(112px,1.35fr) 76px 76px!important;max-width:320px}}
 @media(max-width:700px){.studentHomeworkTasks{grid-template-columns:1fr}.studentRoundCells{grid-template-columns:minmax(108px,1fr) 72px 72px!important;max-width:100%}}
+
+
+/* 2026-08-23: science/social progress subjects */
+.subjectRoundBar.science>span{background:#22a06b}
+.subjectRoundBar.social>span{background:#2684d8}
+.studentHomeworkCard.science{border-left-color:#22a06b}
+.studentHomeworkCard.social{border-left-color:#2684d8}

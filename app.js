@@ -188,7 +188,7 @@ function metricCard(title, value, sub = "", tone = "") {
 }
 
 function subjectProgressClass(subject) {
-  return ({ 英語: "english", 数学: "math", 国語: "japanese" })[subject] || "other";
+  return ({ 英語: "english", 数学: "math", 国語: "japanese", 理科: "science", 社会: "social" })[subject] || "other";
 }
 
 function mappedRoundWidth(percent) {
@@ -708,7 +708,7 @@ async function openProgress(options) {
       const unitDisabled = editable && (!rangeLocked || canOutsideOverride) ? "" : "disabled";
       const outsideAttr = rangeLocked ? "true" : "false";
       const checkHtml = options.mode === "range" ? `<span class="rangeCheckCell"><small>${options.rangeType === "決定" ? "決定範囲" : "予想範囲"}</small><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" data-outside-locked="${outsideAttr}" ${unitDisabled} ${selected.has(u.unitId) ? "checked" : ""}></span>` : `<input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" data-outside-locked="${outsideAttr}" ${unitDisabled} ${selected.has(u.unitId) ? "checked" : ""}>`;
-      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""} ${options.mode === "range" ? "rangeSelectable" : ""}" data-unit="${esc(u.unitId)}">${checkHtml}<span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${options.subject !== "国語" && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : options.subject !== "国語" && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
+      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""} ${options.mode === "range" ? "rangeSelectable" : ""}" data-unit="${esc(u.unitId)}">${checkHtml}<span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${["英語", "数学"].includes(options.subject) && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : ["英語", "数学"].includes(options.subject) && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
     }).join("");
     const schoolLegend = options.mode === "lesson" ? `<span class="schoolLegendControl"><i style="background:var(--school)"></i><b>学校の現在地</b><small>単元右の🏫を押す</small><input id="schoolPositionDate" type="date" value="${esc(todayValue)}" aria-label="学校進度の確認日"><output id="schoolPositionStatus" aria-live="polite"></output></span>` : '<span><i style="background:var(--school)"></i>学校の現在地</span>';
     const progressActions = options.mode === "lesson"
