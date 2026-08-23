@@ -1,0 +1,15 @@
+Applied student self-study permanent delete and moss green graph.
+patch_exit=0
+
+> test
+> node tests/domain.test.mjs && node tests/gas-pure.test.mjs && node tests/admin-entry.test.mjs && node tests/admin-range-entry.test.mjs && node tests/teacher-experience.test.mjs && node tests/japanese-progress.test.mjs
+
+domain tests: five-subject progression assertions passed
+GAS pure tests: 30 assertions passed
+admin entry tests: 11 assertions passed
+admin range entry tests: 18 assertions passed
+teacher experience tests: five-subject assertions passed
+Japanese progression tests: 14 assertions passed
+test_exit=0
+app_parse_exit=0
+gas_parse_exit=0

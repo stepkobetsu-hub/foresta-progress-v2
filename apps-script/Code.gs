@@ -19,7 +19,7 @@ let REQUEST_CACHE = {};
 
 function doGet(e) {
   ensureScienceSocialUnits_();
-  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.3.0', time: nowIso_() });
+  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.3.1', time: nowIso_() });
 }
 
 function doPost(e) {
@@ -725,12 +725,17 @@ function restoreHomework_(data) {
 }
 
 function deleteHomework_(data) {
-  const context = homeworkMutationContext_(data, ['teacher'], true);
+  const context = homeworkMutationContext_(data, ['teacher','student'], true);
+  if (context.session.role === 'student') {
+    const selfEvents = new Set(studentRoundRows_(context.studentId, '').map(function(row) { return text_(row['イベントID']); }).filter(Boolean));
+    const allSelfStudy = context.rows.every(function(row) { return selfEvents.has(text_(row['授業ID'])); });
+    if (!allSelfStudy) throw new Error('FORBIDDEN');
+  }
   const ids = new Set(context.ids);
   replaceRows_('宿題の生徒チェック', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
   replaceRows_('宿題の講師チェック', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
   replaceRows_('宿題', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
-  audit_(context.session, '宿題完全削除', '宿題', context.ids.join(','), '成功', context.student.name);
+  audit_(context.session, '宿題完全削除', '宿題', context.ids.join(','), '成功', context.student.name + (context.session.role === 'student' ? ' / 自主学習' : ''));
   return { deleted: context.ids.length };
 }
 
