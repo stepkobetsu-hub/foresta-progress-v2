@@ -1,0 +1,13 @@
+function homeworkDisplayInfo(item) {
+  const raw = String(item?.contentText || item?.contentType || "").trim();
+  const folded = raw.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+  if (/巻末.*keywords?test|keywords?test.*巻末/iu.test(raw)) return { title: "巻末のKeyWordsTestの暗記", note: "巻末のKeyWordsTestを暗記します。" };
+  if (/暗記マーク|基本文/iu.test(raw)) return { title: "暗記マーク（基本文の暗記）", note: "暗記マークが付いた基本文を暗記します。" };
+  if (/keywords?/iu.test(raw)) return { title: "KEYWORDSの暗記", note: "KEYWORDSを暗記します。" };
+  if (/try/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "TRYの赤×なおし", note: "TRYで間違えた問題を解き直します。" };
+  if (/(エクササイズ|exercise)/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "エクササイズの赤×なおし", note: "エクササイズで間違えた問題を解き直します。" };
+  if (folded === "exercise" || /^(エクササイズ)$/u.test(raw)) return { title: "エクササイズ", note: "指定されたエクササイズに取り組みます。" };
+  if (/宿題/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "宿題の赤×なおし", note: "宿題で間違えた問題を解き直します。" };
+  if (/try/iu.test(raw)) return { title: "TRY", note: "指定されたTRYに取り組みます。" };
+  return { title: raw || "宿題", note: "" };
+}
