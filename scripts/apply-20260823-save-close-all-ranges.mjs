@@ -46,8 +46,8 @@ if (!app.includes('id="saveRangeClose"')) {
 }
 
 index = index
-  .replace(/styles\.css\?v=[^\"]+/u, 'styles.css?v=20260823-save-close')
-  .replace(/app\.js\?v=[^\"]+/u, 'app.js?v=20260823-save-close');
+  .replace(/styles\.css\?v=[^"]+/u, 'styles.css?v=20260823-save-close')
+  .replace(/app\.js\?v=[^"]+/u, 'app.js?v=20260823-save-close');
 
 if (!app.includes('id="saveRangeClose"')) throw new Error('saveRangeClose button missing');
 if (!app.includes('button.textContent = "保存して閉じています…"')) throw new Error('save-and-close wait state missing');
