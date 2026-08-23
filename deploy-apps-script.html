@@ -12,7 +12,7 @@
 <body>
 <main class="wrap">
   <section class="card">
-    <p class="muted" style="margin-top:0">フォレスタ進捗管理 v2.2</p>
+    <p class="muted" style="margin-top:0">フォレスタ進捗管理 v2.3</p>
     <h1>Apps Script 本番更新</h1>
     <p>GitHubで検証済みの最新 <code>Code.gs</code> を、既存のApps Scriptプロジェクトへ反映して同じWebアプリURLのまま更新します。今回の最新版は、3周管理に加えて<strong>理科・社会の進行表</strong>へ対応しています。</p>
     <div id="status" class="status">最新コードを読み込んでいます…</div>
@@ -35,13 +35,13 @@ const API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTm
 (async()=>{
   const status=document.getElementById('status'),button=document.getElementById('copyCode'),check=document.getElementById('checkApi');
   try{
-    const response=await fetch('./apps-script/Code.gs?v=20260823-science-social-v2',{cache:'no-store'});
+    const response=await fetch('./apps-script/Code.gs?v=20260823-homework-archive',{cache:'no-store'});
     if(!response.ok)throw new Error('Code.gsを取得できませんでした');
     const code=await response.text();
-    if(!code.includes("const TRACKED_SUBJECTS = ['国語', '英語', '数学', '理科', '社会']")||!code.includes('FORESTA_SCI_SOC_UNITS_V2')||!code.includes("version: '2.2.0'")||!code.includes('scienceRowsFromSheet_')||!code.includes("alternateSchool ? '啓林館' : '東書'"))throw new Error('理科・社会 v2.2 対応版ではありません');
+    if(!code.includes("const TRACKED_SUBJECTS = ['国語', '英語', '数学', '理科', '社会']")||!code.includes('FORESTA_SCI_SOC_UNITS_V2')||!code.includes("version: '2.3.0'")||!code.includes('archiveHomework_')||!code.includes("alternateSchool ? '啓林館' : '東書'"))throw new Error('理科・社会 v2.2 対応版ではありません');
     window.latestCode=code;
     button.disabled=false;
-    status.textContent='検証済みの5科目対応 v2.2 Code.gs を読み込みました。';
+    status.textContent='検証済みの5科目・宿題アーカイブ対応 v2.3 Code.gs を読み込みました。';
     status.classList.add('done');
   }catch(error){status.textContent=error.message;status.classList.add('error')}
   button.onclick=async()=>{
@@ -53,8 +53,8 @@ const API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTm
     try{
       const response=await fetch(API,{cache:'no-store',redirect:'follow'});
       const result=await response.json();
-      if(result && result.ok===true && result.version==='2.2.0'){
-        status.textContent='✓ 5科目対応API v2.2へ切替済みです。本番デプロイ完了。';status.className='status done';
+      if(result && result.ok===true && result.version==='2.3.0'){
+        status.textContent='✓ 宿題アーカイブ対応API v2.3へ切替済みです。本番デプロイ完了。';status.className='status done';
       }else if(result && result.ok===true){
         status.textContent='まだ旧APIです（現在 '+String(result.version||'不明')+'）。既存デプロイを「新バージョン」に更新してください。';status.className='status error';
       }else{

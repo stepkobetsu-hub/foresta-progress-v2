@@ -19,7 +19,7 @@ let REQUEST_CACHE = {};
 
 function doGet(e) {
   ensureScienceSocialUnits_();
-  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.2.0', time: nowIso_() });
+  return json_({ ok: true, app: 'フォレスタ進捗管理', version: '2.3.0', time: nowIso_() });
 }
 
 function doPost(e) {
@@ -63,6 +63,10 @@ function route_(data) {
     case 'saveCt': return saveCt_(data);
     case 'studentCheckHomework': return studentCheckHomework_(data);
     case 'teacherCheckHomework': return teacherCheckHomework_(data);
+    case 'getHomeworkArchive': return getHomeworkArchive_(data);
+    case 'archiveHomework': return archiveHomework_(data);
+    case 'restoreHomework': return restoreHomework_(data);
+    case 'deleteHomework': return deleteHomework_(data);
     case 'saveTargets': return saveTargets_(data);
     case 'saveComment': return saveComment_(data);
     case 'saveNote': return saveNote_(data);
@@ -95,6 +99,7 @@ function publicError_(error) {
     INVALID_UNIT: '選択した単元を確認してください。', DUPLICATE_CT: 'この授業のCTはすでに登録されています。',
     CT_NOT_PREVIOUS: 'CTは前回授業範囲から1単元だけ選んでください。', INVALID_VALUE: '入力内容を確認してください。',
     OUTSIDE_TEST_RANGE: '次回テスト範囲外です。進める場合は確認してください。', ROUND_ORDER: '周回は1周目から順番に入力してください。',
+    HOMEWORK_NOT_COMPLETE: '完了条件を満たしていない宿題はアーカイブできません。',
   };
   return map[code] || '処理に失敗しました。時間を置いてもう一度お試しください。';
 }
@@ -472,7 +477,7 @@ function getStudentDashboard_(data) {
   student.subjects = tt.subjects; student.englishLevel = tt.englishLevel; student.mathLevel = tt.mathLevel;
   const nextTest = nextTestFor_(student), scores = scoreHistory_(student.studentId), targets = targetsFor_(student.studentId, nextTest && nextTest.testId), homework = homeworkFor_(student.studentId), note = latestNote_(student.studentId);
   const progress = TRACKED_SUBJECTS.map(function(subject) { return progressionFor_(student, subject, false).summary; });
-  const response = { student: student, nextTest: nextTest, scores: scores, targets: targets, homework: homework, note: note, progress: progress, capabilities:{roundProgress:true,outsideRangeOverride:true,studentRoundInput:true,studentHomeworkCardsV2:true} };
+  const response = { student: student, nextTest: nextTest, scores: scores, targets: targets, homework: homework, note: note, progress: progress, capabilities:{roundProgress:true,outsideRangeOverride:true,studentRoundInput:true,studentHomeworkCardsV2:true,homeworkArchive:true,homeworkSourceRules:true} };
   if (access.session.role === 'teacher') response.teacherCandidates = getActiveTeachers_().filter(function(t) { return teacherMatchesCampus_(t.campus, student.campus); }).map(function(t) { return { loginId: t.loginId, name: t.name, campus: t.campus }; });
   return response;
 }
@@ -597,15 +602,136 @@ function getProgression_(data) { const access = authorizeStudentAccess_(data); i
 function targetsFor_(studentId, testId) { const out = {}; if (!testId) return out; objects_('テスト別目標点').filter(function(row) { return text_(row['生徒ID']) === studentId && text_(row['テストID']) === testId; }).forEach(function(row) { out[text_(row['科目'])] = row['目標点']; }); return out; }
 function latestNote_(studentId) { const rows = objects_('生徒注意事項').filter(function(row) { return text_(row['生徒ID']) === studentId && String(row['有効']).toUpperCase() !== 'FALSE'; }).sort(function(a, b) { return new Date(b['更新日時']) - new Date(a['更新日時']); }); return rows.length ? { text: text_(rows[0]['本文']), updatedAt: rows[0]['更新日時'], updatedBy: text_(rows[0]['操作者名']) } : null; }
 
-function homeworkFor_(studentId) {
-  const homeworks = objects_('宿題').filter(function(row) { return text_(row['生徒ID']) === studentId && String(row['有効']).toUpperCase() !== 'FALSE'; });
-  const sc = objects_('宿題の生徒チェック'), tc = objects_('宿題の講師チェック');
-  const unitMap = {}; objects_('単元マスタ').forEach(function(row) { unitMap[text_(row['単元ID'])] = { unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']) }; });
-  const roundByEvent={}; studentRoundRows_(studentId,'').forEach(function(row){roundByEvent[text_(row['イベントID'])]=Number(row['周回'])||'';});
+function homeworkRowsFor_(studentId, archived) {
+  const wantArchived = !!archived;
+  const homeworks = objects_('宿題').filter(function(row) {
+    const isArchived = String(row['有効']).toUpperCase() === 'FALSE';
+    return text_(row['生徒ID']) === text_(studentId) && isArchived === wantArchived;
+  });
+  const studentChecks = objects_('宿題の生徒チェック');
+  const teacherChecks = objects_('宿題の講師チェック');
+  const unitMap = {};
+  objects_('単元マスタ').forEach(function(row) {
+    unitMap[text_(row['単元ID'])] = { unitNumber: text_(row['単元番号']), unitName: text_(row['単元名']) };
+  });
+  const roundByEvent = {};
+  studentRoundRows_(studentId, '').forEach(function(row) {
+    roundByEvent[text_(row['イベントID'])] = Number(row['周回']) || 1;
+  });
   return homeworks.map(function(row) {
-    const id = text_(row['宿題ID']), student = sc.filter(function(x) { return text_(x['宿題ID']) === id; }).sort(function(a,b){return new Date(b['更新日時'])-new Date(a['更新日時']);})[0], teacher = tc.filter(function(x) { return text_(x['宿題ID']) === id; }).sort(function(a,b){return new Date(b['更新日時'])-new Date(a['更新日時']);})[0], due = new Date(row['推奨完了日']);
-    return { homeworkId: id, lessonId:text_(row['授業ID']), subject:text_(row['科目']), unitId: text_(row['単元ID']), unitNumber: unitMap[text_(row['単元ID'])] && unitMap[text_(row['単元ID'])].unitNumber, unitName: unitMap[text_(row['単元ID'])] && unitMap[text_(row['単元ID'])].unitName, roundNumber:roundByEvent[text_(row['授業ID'])]||'', createdAt:row['作成日時'], contentType: text_(row['内容種別']), contentText: text_(row['内容本文']), recommendedDueDate: due.toISOString(), studentChecked: !!student && String(student['チェック']).toUpperCase() !== 'FALSE', studentCheckedAt: student && student['チェック日時'], teacherChecked: !!teacher && String(teacher['チェック']).toUpperCase() !== 'FALSE', teacherCheckedAt: teacher && teacher['チェック日時'], overdue: due.getTime() < Date.now() && !(teacher && String(teacher['チェック']).toUpperCase() !== 'FALSE') };
-  }).sort(function(a,b){return new Date(b.recommendedDueDate)-new Date(a.recommendedDueDate);});
+    const id = text_(row['宿題ID']);
+    const lessonId = text_(row['授業ID']);
+    const studentCheck = studentChecks.filter(function(item) { return text_(item['宿題ID']) === id; }).sort(function(a, b) { return new Date(b['更新日時']) - new Date(a['更新日時']); })[0];
+    const teacherCheck = teacherChecks.filter(function(item) { return text_(item['宿題ID']) === id; }).sort(function(a, b) { return new Date(b['更新日時']) - new Date(a['更新日時']); })[0];
+    const due = new Date(row['推奨完了日']);
+    const selfStudy = Object.prototype.hasOwnProperty.call(roundByEvent, lessonId);
+    const studentChecked = !!studentCheck && String(studentCheck['チェック']).toUpperCase() !== 'FALSE';
+    const teacherChecked = !!teacherCheck && String(teacherCheck['チェック']).toUpperCase() !== 'FALSE';
+    const completed = selfStudy ? studentChecked : teacherChecked;
+    return {
+      homeworkId: id,
+      lessonId: lessonId,
+      subject: text_(row['科目']),
+      unitId: text_(row['単元ID']),
+      unitNumber: unitMap[text_(row['単元ID'])] && unitMap[text_(row['単元ID'])].unitNumber,
+      unitName: unitMap[text_(row['単元ID'])] && unitMap[text_(row['単元ID'])].unitName,
+      roundNumber: roundByEvent[lessonId] || '',
+      source: selfStudy ? 'self' : 'teacher',
+      sourceLabel: selfStudy ? '自主学習' : '講師からの宿題',
+      completionMode: selfStudy ? 'student' : 'teacher',
+      completed: completed,
+      canArchive: !wantArchived && completed,
+      archived: wantArchived,
+      createdAt: row['作成日時'],
+      contentType: text_(row['内容種別']),
+      contentText: text_(row['内容本文']),
+      recommendedDueDate: due.toISOString(),
+      studentChecked: studentChecked,
+      studentCheckedAt: studentCheck && studentCheck['チェック日時'],
+      teacherChecked: teacherChecked,
+      teacherCheckedAt: teacherCheck && teacherCheck['チェック日時'],
+      overdue: due.getTime() < Date.now() && !completed
+    };
+  }).sort(function(a, b) { return new Date(b.recommendedDueDate) - new Date(a.recommendedDueDate); });
+}
+
+function homeworkFor_(studentId) { return homeworkRowsFor_(studentId, false); }
+function archivedHomeworkFor_(studentId) { return homeworkRowsFor_(studentId, true); }
+
+function homeworkIdsFrom_(data) {
+  const raw = Array.isArray(data.homeworkIds) ? data.homeworkIds : [data.homeworkId];
+  return Array.from(new Set(raw.map(text_).filter(Boolean)));
+}
+
+function homeworkMutationContext_(data, roles, archivedState) {
+  const session = requireRole_(data, roles);
+  const ids = homeworkIdsFrom_(data);
+  if (!ids.length) throw new Error('INVALID_VALUE');
+  const wanted = new Set(ids);
+  const rows = objects_('宿題').filter(function(row) { return wanted.has(text_(row['宿題ID'])); });
+  if (rows.length !== ids.length) throw new Error('INVALID_VALUE');
+  const studentIds = Array.from(new Set(rows.map(function(row) { return text_(row['生徒ID']); })));
+  if (studentIds.length !== 1) throw new Error('INVALID_VALUE');
+  const studentId = studentIds[0];
+  if (session.role === 'student' && studentId !== session.studentId) throw new Error('FORBIDDEN');
+  const student = getActiveStudent_(studentId);
+  if (typeof archivedState === 'boolean') {
+    const invalidState = rows.some(function(row) {
+      const isArchived = String(row['有効']).toUpperCase() === 'FALSE';
+      return isArchived !== archivedState;
+    });
+    if (invalidState) throw new Error('INVALID_VALUE');
+  }
+  return { session: session, student: student, studentId: studentId, ids: ids, rows: rows };
+}
+
+function rewriteHomeworkActive_(context, active) {
+  const ids = new Set(context.ids);
+  const now = new Date();
+  const updated = context.rows.map(function(row) {
+    const copy = Object.assign({}, row);
+    copy['有効'] = !!active;
+    copy['更新日時'] = now;
+    copy['操作者ID'] = context.session.loginId || context.session.studentId || '';
+    copy['操作者名'] = context.session.name || '';
+    return copy;
+  });
+  replaceRows_('宿題', function(row) { return ids.has(text_(row['宿題ID'])); }, updated);
+}
+
+function getHomeworkArchive_(data) {
+  const session = requireRole_(data, ['student', 'teacher']);
+  const studentId = session.role === 'student' ? session.studentId : text_(data.studentId);
+  if (!studentId) throw new Error('INVALID_VALUE');
+  const student = getActiveStudent_(studentId);
+  return { student: student, homework: archivedHomeworkFor_(studentId), canDelete: session.role === 'teacher' };
+}
+
+function archiveHomework_(data) {
+  const context = homeworkMutationContext_(data, ['student', 'teacher'], false);
+  const statusMap = {};
+  homeworkFor_(context.studentId).forEach(function(item) { statusMap[item.homeworkId] = item; });
+  if (context.ids.some(function(id) { return !statusMap[id] || !statusMap[id].completed; })) throw new Error('HOMEWORK_NOT_COMPLETE');
+  rewriteHomeworkActive_(context, false);
+  audit_(context.session, '宿題アーカイブ', '宿題', context.ids.join(','), '成功', context.student.name);
+  return { archived: context.ids.length };
+}
+
+function restoreHomework_(data) {
+  const context = homeworkMutationContext_(data, ['student', 'teacher'], true);
+  rewriteHomeworkActive_(context, true);
+  audit_(context.session, '宿題復元', '宿題', context.ids.join(','), '成功', context.student.name);
+  return { restored: context.ids.length };
+}
+
+function deleteHomework_(data) {
+  const context = homeworkMutationContext_(data, ['teacher'], true);
+  const ids = new Set(context.ids);
+  replaceRows_('宿題の生徒チェック', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
+  replaceRows_('宿題の講師チェック', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
+  replaceRows_('宿題', function(row) { return ids.has(text_(row['宿題ID'])); }, []);
+  audit_(context.session, '宿題完全削除', '宿題', context.ids.join(','), '成功', context.student.name);
+  return { deleted: context.ids.length };
 }
 
 function todayScheduledStudents_() {

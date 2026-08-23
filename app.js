@@ -264,6 +264,7 @@ function readCachedStudentDashboard(studentId, maxAgeMs = 120000) {
 }
 
 async function renderStudent(view) {
+  if (view === "homeworkArchive") return renderHomeworkArchivePage("student");
   const data = state.dashboard || await api("getStudentDashboard");
   state.dashboard = data;
   cacheStudentDashboard(data);
@@ -280,7 +281,7 @@ async function renderStudent(view) {
       ${metricCard("テストまで", next ? `${next.daysUntil}日` : "未設定", next ? "日本時間で計算" : "", next?.daysUntil <= 14 ? "alert" : "")}
       ${studentComparisonMiniHtml(data)}
       <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
-      <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article>
+      <article class="card span12 studentHomeworkPanel"><div class="homeworkPanelHead"><p class="cardTitle">次回までの宿題</p><button id="openHomeworkArchiveHome" class="ghostBtn homeworkArchiveOpen" type="button">アーカイブ</button></div><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article>
     </section>`;
   const studentProgressMode = data.capabilities?.studentRoundInput ? "student" : "view";
   $("content").querySelectorAll(".progressionButton").forEach((button) => {
@@ -294,6 +295,8 @@ async function renderStudent(view) {
   else setTimeout(prefetchSubjects, 900);
   bindTargetForm(next?.testId);
   bindHomeworkChecks();
+  bindHomeworkArchiveActions("student");
+  $("openHomeworkArchiveHome")?.addEventListener("click", () => openView("homeworkArchive"));
 }
 
 function homeworkDisplayInfo(item) {
@@ -301,6 +304,7 @@ function homeworkDisplayInfo(item) {
   const folded = raw.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
   if (/巻末.*keywords?test|keywords?test.*巻末/iu.test(raw)) return { title: "巻末のKeyWordsTestの暗記", note: "巻末のKeyWordsTestを暗記します。" };
   if (/暗記マーク|基本文/iu.test(raw)) return { title: "暗記マーク（基本文の暗記）", note: "暗記マークが付いた基本文を暗記します。" };
+  if (/☆日→英/u.test(raw)) return { title: "KeyWords「☆日→英」暗記", note: "KeyWordsの指定範囲を日→英で暗記します。" };
   if (/keywords?/iu.test(raw)) return { title: "KEYWORDSの暗記", note: "KEYWORDSを暗記します。" };
   if (/try/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "TRYの赤×なおし", note: "TRYで間違えた問題を解き直します。" };
   if (/(エクササイズ|exercise)/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "エクササイズの赤×なおし", note: "エクササイズで間違えた問題を解き直します。" };
@@ -310,55 +314,126 @@ function homeworkDisplayInfo(item) {
   return { title: raw || "宿題", note: "" };
 }
 
-function studentHomeworkCardsHtml(items) {
-  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+function homeworkGroups(items) {
   const groups = new Map();
-  items.forEach((item) => {
-    const key = [item.lessonId || "", item.unitId || "", item.recommendedDueDate || ""].join("|");
-    if (!groups.has(key)) groups.set(key, { items: [], subject: item.subject || "", unitNumber: item.unitNumber || "", unitName: item.unitName || "", roundNumber: item.roundNumber || "", createdAt: item.createdAt || "", due: item.recommendedDueDate || "" });
+  (items || []).forEach((item) => {
+    const key = [item.lessonId || "", item.unitId || "", item.recommendedDueDate || "", item.source || "teacher"].join("|");
+    if (!groups.has(key)) groups.set(key, {
+      items: [],
+      subject: item.subject || "",
+      unitNumber: item.unitNumber || "",
+      unitName: item.unitName || "",
+      roundNumber: item.roundNumber || "",
+      createdAt: item.createdAt || "",
+      due: item.recommendedDueDate || "",
+      source: item.source || "teacher",
+      sourceLabel: item.sourceLabel || (item.source === "self" ? "自主学習" : "講師からの宿題"),
+    });
     groups.get(key).items.push(item);
   });
-  return [...groups.values()].map((group) => {
+  return [...groups.values()];
+}
+
+function homeworkItemCompleted(item) {
+  if (typeof item?.completed === "boolean") return item.completed;
+  return item?.source === "self" ? !!item.studentChecked : !!item.teacherChecked;
+}
+
+function homeworkCompletionSummary(items) {
+  const list = items || [];
+  return {
+    total: list.length,
+    completed: list.filter(homeworkItemCompleted).length,
+    selfTotal: list.filter((item) => item.source === "self").length,
+    teacherTotal: list.filter((item) => item.source !== "self").length,
+  };
+}
+
+function homeworkSourceClass(source) { return source === "self" ? "selfStudyHomework" : "teacherAssignedHomework"; }
+function homeworkSourcePill(source) { return `<span class="homeworkSourcePill ${source === "self" ? "self" : "teacher"}">${source === "self" ? "自主学習" : "講師から"}</span>`; }
+function homeworkGroupIds(group) { return group.items.map((item) => item.homeworkId).filter(Boolean).join(","); }
+function homeworkGroupCanArchive(group) { return group.items.length > 0 && group.items.every((item) => item.canArchive === true || (!item.archived && homeworkItemCompleted(item))); }
+
+function studentHomeworkCardsHtml(items) {
+  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
     const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const canArchive = homeworkGroupCanArchive(group);
+    const archiveButton = `<button class="homeworkArchiveX ${canArchive ? "" : "hidden"}" type="button" data-ids="${esc(homeworkGroupIds(group))}" title="この宿題をアーカイブ" aria-label="この宿題をアーカイブ">×</button>`;
     const tasks = group.items.map((item) => {
       const display = homeworkDisplayInfo(item);
       const note = display.note ? `<small class="studentHomeworkTaskNote">${esc(display.note)}</small>` : "";
-      return `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}" title="${esc(display.title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}</span><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済み" : item.studentChecked ? "保存済み" : "自動保存"}</small></span></label>`;
+      let saveText = "自動保存";
+      if (selfStudy) saveText = item.studentChecked ? "完了" : "自動保存";
+      else if (item.teacherChecked) saveText = "講師確認済み";
+      else if (item.studentChecked) saveText = "講師確認待ち";
+      const disableStudent = !selfStudy && item.teacherChecked;
+      return `<label class="studentHomeworkTask ${homeworkItemCompleted(item) ? "confirmed" : ""}" title="${esc(display.title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}</span><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${disableStudent ? "disabled" : ""}><b>${disableStudent ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${esc(saveText)}</small></span></label>`;
     }).join("");
-    return `<article class="studentHomeworkCard ${subjectProgressClass(subject)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
+    return `<article class="studentHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}" data-homework-source="${esc(group.source)}">${archiveButton}<div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small><small class="homeworkCompletionRule">${selfStudy ? "生徒チェックで完了" : "講師チェックで完了"}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
+  }).join("");
+}
+
+function teacherHomeworkCardsHtml(items) {
+  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
+    const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const canArchive = homeworkGroupCanArchive(group);
+    const archiveButton = `<button class="homeworkArchiveX ${canArchive ? "" : "hidden"}" type="button" data-ids="${esc(homeworkGroupIds(group))}" title="この宿題をアーカイブ" aria-label="この宿題をアーカイブ">×</button>`;
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      const note = display.note ? `<small class="studentHomeworkTaskNote">${esc(display.note)}</small>` : "";
+      if (selfStudy) {
+        return `<div class="studentHomeworkTask teacherSelfHomework ${item.studentChecked ? "confirmed" : ""}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}</span><span class="teacherHomeworkState">${item.studentChecked ? "✓ 生徒チェック済み・完了" : "生徒未完了"}</span></div>`;
+      }
+      return `<label class="studentHomeworkTask teacherAssignedTask ${item.teacherChecked ? "confirmed" : ""}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}<small class="teacherStudentState">生徒：${item.studentChecked ? "チェック済み" : "未チェック"}</small></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="teacherHomeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.teacherChecked ? "checked" : ""}><b>${item.teacherChecked ? "講師確認済み" : "講師チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "完了" : "講師確認で完了"}</small></span></label>`;
+    }).join("");
+    return `<article class="studentHomeworkCard teacherHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}" data-homework-source="${esc(group.source)}">${archiveButton}<div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small><small class="homeworkCompletionRule">${selfStudy ? "自主学習：生徒チェックで完了" : "授業宿題：講師チェックで完了"}</small></div><div class="studentHomeworkTasks teacherHomeworkTasks">${tasks}</div></article>`;
   }).join("");
 }
 
 function homeworkHtml(items, mode = "readonly") {
   if (mode === "student" && state.dashboard?.capabilities?.studentHomeworkCardsV2) return studentHomeworkCardsHtml(items);
+  if (mode === "teacher") return teacherHomeworkCardsHtml(items);
   if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
-  return items.map((item) => `<div class="homeworkItem ${item.teacherChecked ? "complete" : ""} ${item.overdue && !item.teacherChecked ? "overdue" : ""}">
-    <input class="${mode === "student" ? "homeworkCheck" : mode === "teacher" ? "teacherHomeworkCheck" : ""}" type="checkbox" data-id="${esc(item.homeworkId)}" ${mode === "teacher" ? (item.teacherChecked ? "checked" : "") : (item.studentChecked ? "checked" : "")} ${mode === "readonly" || (mode === "student" && item.teacherChecked) ? "disabled" : ""}>
-    <div><strong>${esc(item.unitNumber || "")}</strong> ${esc(item.contentText || item.contentType)}<br><small>${item.teacherChecked ? `講師確認済み ${fmtDateTime(item.teacherCheckedAt)}` : item.studentChecked ? `確認待ち・${fmtDateTime(item.studentCheckedAt)}　素晴らしい！` : "未完了"}</small></div>
-    <span class="badge ${item.overdue && !item.teacherChecked ? "bad" : ""}">${fmtDate(item.recommendedDueDate)}</span>
-  </div>`).join("");
+  return items.map((item) => `<div class="homeworkItem ${homeworkItemCompleted(item) ? "complete" : ""} ${item.overdue ? "overdue" : ""}"><div><strong>${esc(item.unitNumber || "")}</strong> ${esc(homeworkDisplayInfo(item).title)}<br><small>${homeworkItemCompleted(item) ? "完了" : "未完了"}</small></div><span class="badge ${item.overdue ? "bad" : ""}">${fmtDate(item.recommendedDueDate)}</span></div>`).join("");
 }
 
 function renderHomeworkPage(data) {
-  const summary = homeworkSummary(data.homework || []);
-  $("content").innerHTML = `<header class="pageHead"><div><h1>次回までの宿題</h1><p>宿題は2日以内に終わらせよう！</p></div></header><section class="cardGrid">${metricCard("自己申告", `${summary.studentChecked}/${summary.total}`)}${metricCard("講師確認", `${summary.teacherChecked}/${summary.total}`)}<article class="card span12"><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article></section>`;
+  const summary = homeworkCompletionSummary(data.homework || []);
+  $("content").innerHTML = `<header class="pageHead"><div><h1>次回までの宿題</h1><p>宿題は2日以内に終わらせよう！</p></div><div class="actionRow"><button id="openHomeworkArchive" class="ghostBtn" type="button">アーカイブ</button></div></header><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div><section class="cardGrid">${metricCard("完了", `${summary.completed}/${summary.total}`)}${metricCard("未完了", `${summary.total - summary.completed}/${summary.total}`)}<article class="card span12"><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article></section>`;
   bindHomeworkChecks();
+  bindHomeworkArchiveActions("student");
+  $("openHomeworkArchive").onclick = () => openView("homeworkArchive");
+}
+
+function updateSelfStudyArchiveAvailability(card) {
+  if (!card || card.dataset.homeworkSource !== "self") return;
+  const button = card.querySelector(".homeworkArchiveX");
+  if (!button) return;
+  const checks = [...card.querySelectorAll(".homeworkCheck")];
+  button.classList.toggle("hidden", !checks.length || !checks.every((input) => input.checked));
 }
 
 function bindHomeworkChecks() {
   $("content").querySelectorAll(".homeworkCheck:not(:disabled)").forEach((input) => input.onchange = async () => {
     const nextChecked = input.checked;
     const item = input.closest(".studentHomeworkTask, .homeworkItem");
+    const card = input.closest(".studentHomeworkCard");
     const saveState = item?.querySelector(".homeworkSaveState");
     input.disabled = true;
     if (saveState) saveState.textContent = "保存中…";
     try {
       await api("studentCheckHomework", { homeworkId: input.dataset.id, checked: nextChecked });
       state.dashboard = null;
-      if (saveState) saveState.textContent = "保存済";
+      sessionStorage.removeItem(KEYS.dashboard);
+      if (saveState) saveState.textContent = card?.dataset.homeworkSource === "self" ? (nextChecked ? "完了" : "自動保存") : (nextChecked ? "講師確認待ち" : "自動保存");
       const actionLabel = item?.querySelector(".studentTaskAction b");
       if (actionLabel) actionLabel.textContent = "チェック";
       input.disabled = false;
+      updateSelfStudyArchiveAvailability(card);
     } catch (error) {
       input.checked = !nextChecked;
       input.disabled = false;
@@ -370,15 +445,90 @@ function bindHomeworkChecks() {
 
 function bindTeacherHomeworkChecks() {
   $("content").querySelectorAll(".teacherHomeworkCheck").forEach((input) => input.onchange = async () => {
+    const nextChecked = input.checked;
     input.disabled = true;
     try {
-      await api("teacherCheckHomework", { homeworkId: input.dataset.id, checked: input.checked });
-      await openView("selected");
+      await api("teacherCheckHomework", { homeworkId: input.dataset.id, checked: nextChecked });
+      if (state.activeStudentId) {
+        delete state.teacherStudentCache[String(state.activeStudentId)];
+        await renderTeacherStudent(state.activeStudentId, { force: true });
+      }
     } catch (error) {
-      input.checked = !input.checked;
+      input.checked = !nextChecked;
       input.disabled = false;
       status(error.message, true);
     }
+  });
+}
+
+function bindHomeworkArchiveActions(mode) {
+  $("content").querySelectorAll(".homeworkArchiveX").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    if (!ids.length || !confirm("この宿題をアーカイブしますか？")) return;
+    button.disabled = true;
+    try {
+      await api("archiveHomework", { homeworkIds: ids, studentId: mode === "teacher" ? state.activeStudentId : "" });
+      if (mode === "teacher" && state.activeStudentId) {
+        delete state.teacherStudentCache[String(state.activeStudentId)];
+        await renderTeacherStudent(state.activeStudentId, { force: true });
+      } else {
+        state.dashboard = null;
+        sessionStorage.removeItem(KEYS.dashboard);
+        await openView(state.activeView === "homework" ? "homework" : "home");
+      }
+    } catch (error) {
+      button.disabled = false;
+      status(error.message, true);
+    }
+  });
+}
+
+function homeworkArchiveCardsHtml(items, mode) {
+  if (!items.length) return '<div class="emptyState">アーカイブされた宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
+    const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      const statusText = selfStudy ? (item.studentChecked ? "生徒チェック済み" : "未完了") : (item.teacherChecked ? "講師確認済み" : "未完了");
+      return `<div class="archivedHomeworkTask"><strong>${esc(display.title)}</strong><small>${esc(statusText)}</small></div>`;
+    }).join("");
+    const ids = homeworkGroupIds(group);
+    return `<article class="studentHomeworkCard archivedHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>期限 ${fmtShortDate(group.due)}</small></div><div class="archivedHomeworkBody"><div class="archivedHomeworkTasks">${tasks}</div><div class="archiveActions"><button class="restoreHomeworkGroup secondaryBtn" type="button" data-ids="${esc(ids)}">復元</button>${mode === "teacher" ? `<button class="deleteHomeworkGroup dangerOutlineBtn" type="button" data-ids="${esc(ids)}">完全削除</button>` : ""}</div></div></article>`;
+  }).join("");
+}
+
+async function renderHomeworkArchivePage(mode = "student", studentId = "") {
+  const data = await api("getHomeworkArchive", studentId ? { studentId } : {}, { silent: true });
+  const isTeacher = mode === "teacher";
+  $("content").innerHTML = `${isTeacher ? selectedTabsHtml() : ""}<header class="pageHead"><div><h1>宿題アーカイブ</h1><p>${isTeacher ? `${esc(data.student?.name || "")}さん / ` : ""}完了した宿題を保管しています。</p></div><div class="actionRow"><button id="backFromHomeworkArchive" class="ghostBtn" type="button">← 宿題に戻る</button></div></header><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div>${!isTeacher ? '<p class="archiveNote">復元できます。完全削除は講師画面から行います。</p>' : ""}<div class="homeworkList archiveHomeworkList">${homeworkArchiveCardsHtml(data.homework || [], mode)}</div>`;
+  if (isTeacher) bindSelectedTabs();
+  $("backFromHomeworkArchive").onclick = () => {
+    if (isTeacher) { state.activeView = "selected"; openView("selected"); }
+    else openView("homework");
+  };
+  bindHomeworkArchivePageActions(mode, studentId || data.student?.studentId || "");
+}
+
+function bindHomeworkArchivePageActions(mode, studentId) {
+  $("content").querySelectorAll(".restoreHomeworkGroup").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    button.disabled = true;
+    try {
+      await api("restoreHomework", { homeworkIds: ids, studentId: mode === "teacher" ? studentId : "" });
+      if (mode === "teacher") delete state.teacherStudentCache[String(studentId)];
+      await renderHomeworkArchivePage(mode, studentId);
+    } catch (error) { button.disabled = false; status(error.message, true); }
+  });
+  $("content").querySelectorAll(".deleteHomeworkGroup").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    if (!confirm("この宿題を完全に削除します。元に戻せません。よろしいですか？")) return;
+    button.disabled = true;
+    try {
+      await api("deleteHomework", { homeworkIds: ids, studentId });
+      delete state.teacherStudentCache[String(studentId)];
+      await renderHomeworkArchivePage(mode, studentId);
+    } catch (error) { button.disabled = false; status(error.message, true); }
   });
 }
 
@@ -438,6 +588,7 @@ function renderScoresPage(data) {
 
 async function renderTeacher(view) {
   if (view === "today") return renderToday();
+  if (view === "selectedArchive" && state.activeStudentId) return renderHomeworkArchivePage("teacher", state.activeStudentId);
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
   $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。入力すると自動で検索します。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><div id="searchResults" class="searchResults"><div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div></div></article>${selectedTabsHtml()}`;
   $("studentSearch").oninput = scheduleStudentSearch;
@@ -514,9 +665,9 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   if (state.activeStudentId !== requestedId) return;
   state.dashboard = data;
   const next = data.nextTest;
-  const summary = homeworkSummary(data.homework || []);
+  const summary = homeworkCompletionSummary(data.homework || []);
   const orderedSubjects = [...new Set([...(data.student.subjects || []), ...SUBJECTS])];
-  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow lessonControls"><select id="lessonSubject" class="field" aria-label="科目">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><label class="teacherPicker"><span>担当講師</span><select id="lessonTeacher" class="field" aria-label="担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button id="inputLesson" class="primaryBtn">進行表を開く</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12 teacherNoticeCard"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6"><p class="cardTitle">前回宿題</p><p class="muted">生徒自己申告 ${summary.studentChecked}/${summary.total}　講師確認 ${summary.teacherChecked}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">5科目の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>国語</th><th>数学</th><th>英語</th><th>理科</th><th>社会</th><th>5科</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.jpn)}</td><td>${esc(s.math)}</td><td>${esc(s.eng)}</td><td>${esc(s.sci)}</td><td>${esc(s.soc)}</td><td>${esc(s.total5)}</td></tr>`).join("") || '<tr><td colspan="8">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
+  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow lessonControls"><select id="lessonSubject" class="field" aria-label="科目">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><label class="teacherPicker"><span>担当講師</span><select id="lessonTeacher" class="field" aria-label="担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button id="inputLesson" class="primaryBtn">進行表を開く</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12 teacherNoticeCard"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6 teacherHomeworkPanel"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn homeworkArchiveOpen" type="button">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">5科目の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>国語</th><th>数学</th><th>英語</th><th>理科</th><th>社会</th><th>5科</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.jpn)}</td><td>${esc(s.math)}</td><td>${esc(s.eng)}</td><td>${esc(s.sci)}</td><td>${esc(s.soc)}</td><td>${esc(s.total5)}</td></tr>`).join("") || '<tr><td colspan="8">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
   const headerScoreCorrection = $("content").querySelector(`.pageHead a[href="${CONFIG.scoreCorrectionUrl}"]`);
   if (headerScoreCorrection) headerScoreCorrection.remove();
   const testHistoryTitle = [...$("content").querySelectorAll(".cardTitle")].find((item) => item.textContent.trim() === "定期テスト履歴");
@@ -531,6 +682,8 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
   $("saveComment").onclick = async () => { const text = $("teacherComment").value.trim(); if (!text) return; try { await api("saveComment", { studentId, subject: $("lessonSubject").value, text }); $("teacherComment").value = ""; status("コメントを保存しました。"); } catch (error) { status(error.message, true); } };
   bindTeacherHomeworkChecks();
+  bindHomeworkArchiveActions("teacher");
+  $("openTeacherHomeworkArchive")?.addEventListener("click", () => { state.activeView = "selectedArchive"; openView("selectedArchive"); });
 }
 
 async function renderToday() {
