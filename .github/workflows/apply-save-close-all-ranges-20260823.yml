@@ -1,4 +1,4 @@
-name: Apply homework source rules and archive
+name: Apply self-study delete and moss graph
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: foresta-progress-v2-homework-archive
+  group: foresta-progress-v2-self-delete-moss
   cancel-in-progress: false
 
 jobs:
@@ -25,52 +25,48 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply homework archive patch and test
+      - name: Apply patch and verify
         shell: bash
         run: |
           set +e
-          node scripts/apply-20260823-homework-archive.mjs > HOMEWORK_ARCHIVE_DIAG.txt 2>&1
+          node scripts/apply-20260823-self-delete-moss.mjs > SELF_DELETE_MOSS_DIAG.txt 2>&1
           patch_code=$?
-          echo "patch_exit=$patch_code" >> HOMEWORK_ARCHIVE_DIAG.txt
+          echo "patch_exit=$patch_code" >> SELF_DELETE_MOSS_DIAG.txt
           if [ "$patch_code" -eq 0 ]; then
-            npm test >> HOMEWORK_ARCHIVE_DIAG.txt 2>&1
+            npm test >> SELF_DELETE_MOSS_DIAG.txt 2>&1
             test_code=$?
-            echo "test_exit=$test_code" >> HOMEWORK_ARCHIVE_DIAG.txt
-            node --check app.js >> HOMEWORK_ARCHIVE_DIAG.txt 2>&1
+            echo "test_exit=$test_code" >> SELF_DELETE_MOSS_DIAG.txt
+            node --check app.js >> SELF_DELETE_MOSS_DIAG.txt 2>&1
             app_parse=$?
-            echo "app_parse_exit=$app_parse" >> HOMEWORK_ARCHIVE_DIAG.txt
+            echo "app_parse_exit=$app_parse" >> SELF_DELETE_MOSS_DIAG.txt
             cp apps-script/Code.gs /tmp/Code.js
-            node --check /tmp/Code.js >> HOMEWORK_ARCHIVE_DIAG.txt 2>&1
+            node --check /tmp/Code.js >> SELF_DELETE_MOSS_DIAG.txt 2>&1
             gas_parse=$?
-            echo "gas_parse_exit=$gas_parse" >> HOMEWORK_ARCHIVE_DIAG.txt
+            echo "gas_parse_exit=$gas_parse" >> SELF_DELETE_MOSS_DIAG.txt
           else
-            test_code=99
-            app_parse=99
-            gas_parse=99
+            test_code=99; app_parse=99; gas_parse=99
           fi
           echo "PATCH_CODE=$patch_code" >> "$GITHUB_ENV"
           echo "TEST_CODE=$test_code" >> "$GITHUB_ENV"
           echo "APP_PARSE=$app_parse" >> "$GITHUB_ENV"
           echo "GAS_PARSE=$gas_parse" >> "$GITHUB_ENV"
-          cat HOMEWORK_ARCHIVE_DIAG.txt
+          cat SELF_DELETE_MOSS_DIAG.txt
       - name: Commit verified source or diagnostics
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add HOMEWORK_ARCHIVE_DIAG.txt
+          git add SELF_DELETE_MOSS_DIAG.txt
           if [ "$PATCH_CODE" = "0" ] && [ "$TEST_CODE" = "0" ] && [ "$APP_PARSE" = "0" ] && [ "$GAS_PARSE" = "0" ]; then
-            grep -q 'renderHomeworkArchivePage' app.js
-            grep -q 'bindHomeworkArchiveActions("teacher")' app.js
-            grep -q 'renderTeacherStudent(state.activeStudentId, { force: true })' app.js
-            grep -q "case 'archiveHomework'" apps-script/Code.gs
-            grep -q "version: '2.3.0'" apps-script/Code.gs
-            grep -q 'homework source, completion, and archive' styles.css
-            grep -q 'app.js?v=20260823-homework-archive' index.html
+            grep -q "version: '2.3.1'" apps-script/Code.gs
+            grep -q "\['teacher','student'\]" apps-script/Code.gs
+            grep -q 'group.source === "self"' app.js
+            grep -q 'linear-gradient(135deg,#42583d' styles.css
+            grep -q 'app.js?v=20260823-moss-self-delete' index.html
             git add app.js styles.css index.html apps-script/Code.gs deploy-apps-script.html
-            git commit -m "Add homework source rules and archive"
+            git commit -m "Allow student self-study delete and use moss graph"
           else
-            git commit -m "Record homework archive diagnostics"
+            git commit -m "Record self-delete moss diagnostics"
           fi
           git push origin HEAD:main
