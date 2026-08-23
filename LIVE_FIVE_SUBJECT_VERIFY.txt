@@ -1,0 +1,4 @@
+result=V2_2_DEPLOYED
+checked_at=2026-08-23T06:17:55Z
+get={"ok":true,"app":"フォレスタ進捗管理","version":"2.2.0","time":"2026-08-23T15:17:51+09:00"}
+health={"ok":true,"status":"ready","timeZone":"Asia/Tokyo"}
