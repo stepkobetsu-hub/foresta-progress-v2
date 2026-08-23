@@ -30,16 +30,22 @@ jobs:
           GET_CODE=$?
           HEALTH="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"health"}' "$API" 2>&1)"
           HEALTH_CODE=$?
-          ROUND="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"saveStudentRoundProgress","subject":"数学","unitId":"VERIFY_ONLY","roundNumber":1,"checked":true}' "$API" 2>&1)"
-          ROUND_CODE=$?
+          ARCHIVE="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"archiveHomework","lessonId":"VERIFY_ONLY"}' "$API" 2>&1)"
+          ARCHIVE_CODE=$?
+          RESTORE="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"restoreHomework","lessonId":"VERIFY_ONLY"}' "$API" 2>&1)"
+          RESTORE_CODE=$?
+          DELETE="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"deleteHomework","lessonId":"VERIFY_ONLY"}' "$API" 2>&1)"
+          DELETE_CODE=$?
 
           RESULT='UNEXPECTED'
-          if [ "$GET_CODE" -ne 0 ] || [ "$HEALTH_CODE" -ne 0 ] || [ "$ROUND_CODE" -ne 0 ]; then
+          if [ "$GET_CODE" -ne 0 ] || [ "$HEALTH_CODE" -ne 0 ] || [ "$ARCHIVE_CODE" -ne 0 ] || [ "$RESTORE_CODE" -ne 0 ] || [ "$DELETE_CODE" -ne 0 ]; then
             RESULT='NETWORK_ERROR'
-          elif echo "$ROUND" | grep -q '処理を実行できません'; then
-            RESULT='OLD_DEPLOYMENT'
-          elif echo "$ROUND" | grep -q 'ログインの有効期限が切れました'; then
-            RESULT='THREE_ROUND_DEPLOYED'
+          elif ! echo "$GET_BODY" | grep -q '"version":"2.3.0"'; then
+            RESULT='OLD_VERSION'
+          elif echo "$ARCHIVE$RESTORE$DELETE" | grep -q '処理を実行できません'; then
+            RESULT='OLD_ARCHIVE_API'
+          elif echo "$ARCHIVE" | grep -q 'ログインの有効期限が切れました' && echo "$RESTORE" | grep -q 'ログインの有効期限が切れました' && echo "$DELETE" | grep -q 'ログインの有効期限が切れました'; then
+            RESULT='V2_3_ARCHIVE_DEPLOYED'
           fi
 
           cat > LIVE_VERIFY_RESULT.txt <<EOF
@@ -47,7 +53,9 @@ jobs:
           checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           get=$GET_BODY
           health=$HEALTH
-          round=$ROUND
+          archive=$ARCHIVE
+          restore=$RESTORE
+          delete=$DELETE
           EOF
 
           cat LIVE_VERIFY_RESULT.txt
@@ -56,6 +64,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add LIVE_VERIFY_RESULT.txt
           if ! git diff --cached --quiet; then
-            git commit -m "Record live Apps Script verification"
+            git commit -m "Record live homework archive verification"
             git push origin HEAD:main
           fi
