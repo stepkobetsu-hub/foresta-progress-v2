@@ -136,3 +136,17 @@
 @media(max-width:980px){.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.studentHomeworkCard{grid-template-columns:1fr}.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))}.studentComparisonMini{grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.comparisonMiniRow{grid-template-columns:1fr;text-align:center}.comparisonMiniRow b{font-size:.68rem}}
 @media(max-width:520px){.studentHomeworkTasks{grid-template-columns:1fr}.studentComparisonMini{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+
+/* 2026-08-23: readable homework labels */
+.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
+.studentHomeworkTask{grid-template-columns:minmax(0,1fr) auto;align-items:center;min-height:84px;padding:10px 12px;gap:10px;overflow:visible}
+.studentHomeworkTaskLabel{display:grid;gap:3px;min-width:0}
+.studentHomeworkTaskLabel strong{font-size:.75rem;line-height:1.45;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;color:inherit}
+.studentHomeworkTaskNote{display:block;color:var(--muted);font-size:.62rem;line-height:1.4;white-space:normal}
+.studentTaskRight{display:grid;justify-items:start;gap:4px;min-width:98px}
+.studentTaskAction{white-space:nowrap}
+.homeworkSaveState{white-space:nowrap}
+.studentHomeworkCard{grid-template-columns:minmax(270px,.95fr) minmax(0,1.4fr)}
+@media(max-width:900px){.studentHomeworkCard{grid-template-columns:1fr}.studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.studentHomeworkTasks{grid-template-columns:1fr!important}.studentHomeworkTask{grid-template-columns:minmax(0,1fr) auto}}

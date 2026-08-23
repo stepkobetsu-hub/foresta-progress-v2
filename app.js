@@ -296,6 +296,20 @@ async function renderStudent(view) {
   bindHomeworkChecks();
 }
 
+function homeworkDisplayInfo(item) {
+  const raw = String(item?.contentText || item?.contentType || "").trim();
+  const folded = raw.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+  if (/巻末.*keywords?test|keywords?test.*巻末/iu.test(raw)) return { title: "巻末のKeyWordsTestの暗記", note: "巻末のKeyWordsTestを暗記します。" };
+  if (/暗記マーク|基本文/iu.test(raw)) return { title: "暗記マーク（基本文の暗記）", note: "暗記マークが付いた基本文を暗記します。" };
+  if (/keywords?/iu.test(raw)) return { title: "KEYWORDSの暗記", note: "KEYWORDSを暗記します。" };
+  if (/try/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "TRYの赤×なおし", note: "TRYで間違えた問題を解き直します。" };
+  if (/(エクササイズ|exercise)/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "エクササイズの赤×なおし", note: "エクササイズで間違えた問題を解き直します。" };
+  if (folded === "exercise" || /^(エクササイズ)$/u.test(raw)) return { title: "エクササイズ", note: "指定されたエクササイズに取り組みます。" };
+  if (/宿題/iu.test(raw) && /(赤|×|直し|なおし)/u.test(raw)) return { title: "宿題の赤×なおし", note: "宿題で間違えた問題を解き直します。" };
+  if (/try/iu.test(raw)) return { title: "TRY", note: "指定されたTRYに取り組みます。" };
+  return { title: raw || "宿題", note: "" };
+}
+
 function studentHomeworkCardsHtml(items) {
   if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
   const groups = new Map();
@@ -306,7 +320,11 @@ function studentHomeworkCardsHtml(items) {
   });
   return [...groups.values()].map((group) => {
     const subject = group.subject || "宿題";
-    const tasks = group.items.map((item) => { const taskText = item.contentText || item.contentType; return `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}" title="${esc(taskText)}"><strong>${esc(taskText)}</strong><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済" : item.studentChecked ? "保存済" : "自動保存"}</small></span></label>`; }).join("");
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      const note = display.note ? `<small class="studentHomeworkTaskNote">${esc(display.note)}</small>` : "";
+      return `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}" title="${esc(display.title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}</span><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済み" : item.studentChecked ? "保存済み" : "自動保存"}</small></span></label>`;
+    }).join("");
     return `<article class="studentHomeworkCard ${subjectProgressClass(subject)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
   }).join("");
 }
