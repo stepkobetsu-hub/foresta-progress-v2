@@ -1,4 +1,4 @@
-name: Apply save and close to all range progressions
+name: Apply five-subject student dashboard with proven runner
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: foresta-progress-v2-save-close-all-ranges
+  group: foresta-progress-v2-five-subject-dashboard-proven
   cancel-in-progress: false
 
 jobs:
@@ -25,20 +25,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply, test, and capture result
+      - name: Apply dashboard patch and test
         shell: bash
         run: |
           set +e
-          node scripts/apply-20260823-save-close-all-ranges.mjs > SAVE_CLOSE_DIAG.txt 2>&1
+          node scripts/apply-20260823-five-subject-student-dashboard.mjs > FIVE_SUBJECT_DASHBOARD_DIAG.txt 2>&1
           patch_code=$?
-          echo "patch_exit=$patch_code" >> SAVE_CLOSE_DIAG.txt
+          echo "patch_exit=$patch_code" >> FIVE_SUBJECT_DASHBOARD_DIAG.txt
           if [ "$patch_code" -eq 0 ]; then
-            npm test >> SAVE_CLOSE_DIAG.txt 2>&1
+            npm test >> FIVE_SUBJECT_DASHBOARD_DIAG.txt 2>&1
             test_code=$?
-            echo "test_exit=$test_code" >> SAVE_CLOSE_DIAG.txt
-            node --check app.js >> SAVE_CLOSE_DIAG.txt 2>&1
+            echo "test_exit=$test_code" >> FIVE_SUBJECT_DASHBOARD_DIAG.txt
+            node --check app.js >> FIVE_SUBJECT_DASHBOARD_DIAG.txt 2>&1
             parse_code=$?
-            echo "parse_exit=$parse_code" >> SAVE_CLOSE_DIAG.txt
+            echo "parse_exit=$parse_code" >> FIVE_SUBJECT_DASHBOARD_DIAG.txt
           else
             test_code=99
             parse_code=99
@@ -46,22 +46,22 @@ jobs:
           echo "PATCH_CODE=$patch_code" >> "$GITHUB_ENV"
           echo "TEST_CODE=$test_code" >> "$GITHUB_ENV"
           echo "PARSE_CODE=$parse_code" >> "$GITHUB_ENV"
-          cat SAVE_CLOSE_DIAG.txt
-      - name: Commit result
+          cat FIVE_SUBJECT_DASHBOARD_DIAG.txt
+      - name: Commit verified dashboard or diagnostics
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SAVE_CLOSE_DIAG.txt
+          git add FIVE_SUBJECT_DASHBOARD_DIAG.txt
           if [ "$PATCH_CODE" = "0" ] && [ "$TEST_CODE" = "0" ] && [ "$PARSE_CODE" = "0" ]; then
-            grep -q 'id="saveRangeClose"' app.js
-            grep -q '保存して閉じています' app.js
-            grep -q 'while (rangeSaving)' app.js
-            grep -q 'app.js?v=20260823-save-close' index.html
-            git add app.js index.html
-            git commit -m "Add save and close to all range progressions"
+            grep -q 'studentComparisonMiniHtml(data)' app.js
+            grep -q 'studentFiveSubjectGraph' app.js
+            grep -q 'five-subject student dashboard' styles.css
+            grep -q 'app.js?v=20260823-five-subject-dashboard' index.html
+            git add app.js styles.css index.html
+            git commit -m "Improve five-subject student dashboard"
           else
-            git commit -m "Record save-close update diagnostics"
+            git commit -m "Record five-subject dashboard diagnostics"
           fi
           git push origin HEAD:main
