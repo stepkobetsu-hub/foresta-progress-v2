@@ -1,0 +1,53 @@
+name: Apply save and close to all range progressions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - save-close-all-ranges-trigger.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foresta-progress-v2-save-close-all-ranges
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply guarded patch
+        run: node scripts/apply-20260823-save-close-all-ranges.mjs
+      - name: Run tests
+        run: npm test
+      - name: Parse-check browser JavaScript
+        run: node --check app.js && node --check domain.js
+      - name: Verify save-and-close behavior
+        shell: bash
+        run: |
+          grep -q 'id="saveRangeClose"' app.js
+          grep -q '保存して閉じています' app.js
+          grep -q 'while (rangeSaving)' app.js
+          grep -q 'app.js?v=20260823-save-close' index.html
+      - name: Commit verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- app.js index.html; then
+            echo "No source changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html
+          git commit -m "Add save and close to all range progressions"
+          git push origin HEAD:main
