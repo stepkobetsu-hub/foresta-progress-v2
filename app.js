@@ -199,10 +199,13 @@ function mappedRoundWidth(percent) {
 }
 
 function studentRoundProgressHtml(data) {
-  const rows = (data.progress || []).filter((row) => row.roundProgress && Number(row.roundProgress.targetCount) > 0);
-  if (!rows.length) return "";
-  const totalTarget = rows.reduce((sum, row) => sum + Number(row.roundProgress.targetCount || 0), 0);
-  const roundCounts = [1, 2, 3].map((round) => rows.reduce((sum, row) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0));
+  const rows = TRACKED_SUBJECTS.map((subject) => {
+    const row = (data.progress || []).find((item) => item.subject === subject);
+    return row || { subject, roundProgress: { targetCount: 0, roundCounts: { 1: 0, 2: 0, 3: 0 } } };
+  });
+  const configuredRows = rows.filter((row) => Number(row.roundProgress?.targetCount || 0) > 0);
+  const totalTarget = configuredRows.reduce((sum, row) => sum + Number(row.roundProgress.targetCount || 0), 0);
+  const roundCounts = [1, 2, 3].map((round) => configuredRows.reduce((sum, row) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0));
   const totalDone = roundCounts.reduce((sum, value) => sum + value, 0);
   const overallPercent = totalTarget ? Math.round(totalDone / totalTarget * 100) : 0;
   const roundBars = roundCounts.map((count, index) => {
@@ -210,12 +213,32 @@ function studentRoundProgressHtml(data) {
     return `<div class="roundProgressLine round${index + 1}"><span>${index + 1}周目</span><i><b style="width:${Math.min(100, pct)}%"></b></i><strong>${pct}%</strong></div>`;
   }).join("");
   const subjectBars = rows.map((row) => {
-    const target = Number(row.roundProgress.targetCount || 0);
-    const done = [1, 2, 3].reduce((sum, round) => sum + Number(row.roundProgress.roundCounts?.[round] || 0), 0);
+    const target = Number(row.roundProgress?.targetCount || 0);
+    const done = [1, 2, 3].reduce((sum, round) => sum + Number(row.roundProgress?.roundCounts?.[round] || 0), 0);
     const pct = target ? Math.round(done / target * 100) : 0;
-    return `<div class="subjectRoundBar ${subjectProgressClass(row.subject)}"><span>${esc(row.subject)}</span><i><em style="width:${mappedRoundWidth(pct)}%"></em><u>1周目ゴール</u></i><strong>${pct}%</strong></div>`;
+    const label = target ? `${pct}%` : "未設定";
+    return `<div class="subjectRoundBar ${subjectProgressClass(row.subject)} ${target ? "" : "unconfigured"}"><span>${esc(row.subject)}</span><i><em style="width:${mappedRoundWidth(pct)}%"></em><u>1周目ゴール</u></i><strong>${label}</strong></div>`;
   }).join("");
-  return `<section class="roundProgressHero"><div class="roundScore"><small>3周合計</small><strong>${overallPercent}%</strong><span>(${totalDone}/${totalTarget})</span></div><div class="roundProgressBody"><div class="roundProgressLines">${roundBars}</div><div class="subjectRoundBars">${subjectBars}</div><p class="roundProgressGuide">100%で1周目達成。グラフの70%位置を1周目ゴールにし、その先で2周目・3周目を積み上げます。</p></div></section>`;
+  return `<section class="roundProgressHero studentFiveSubjectGraph"><div class="roundScore"><small>3周合計</small><strong>${overallPercent}%</strong><span>${totalTarget ? `(${totalDone}/${totalTarget})` : "範囲未設定"}</span></div><div class="roundProgressBody"><div class="roundProgressLines">${roundBars}</div><div class="subjectRoundBars">${subjectBars}</div><p class="roundProgressGuide">5科目を表示。100%で1周目達成、グラフ70%位置を1周目ゴールにして2周目・3周目を積み上げます。</p></div></section>`;
+}
+
+function comparisonShortLabel(value) {
+  if (value === "学校より先") return "先行";
+  if (value === "学校と同じ") return "同じ";
+  if (value === "学校より遅れ") return "遅れ";
+  return "未設定";
+}
+
+function comparisonStatusClass(value) {
+  if (value === "学校より先") return "ahead";
+  if (value === "学校と同じ") return "same";
+  if (value === "学校より遅れ") return "behind";
+  return "unset";
+}
+
+function studentComparisonMiniHtml(data) {
+  const rows = TRACKED_SUBJECTS.map((subject) => (data.progress || []).find((row) => row.subject === subject) || { subject, comparison: "未設定" });
+  return `<article class="card span4 studentComparisonCard"><p class="cardTitle">学校との比較</p><div class="studentComparisonMini">${rows.map((row) => `<div class="comparisonMiniRow ${comparisonStatusClass(row.comparison)}"><span class="comparisonSubject ${subjectProgressClass(row.subject)}">${esc(row.subject)}</span><b>${esc(comparisonShortLabel(row.comparison))}</b></div>`).join("")}</div></article>`;
 }
 
 function adminRangeCta() {
@@ -255,7 +278,7 @@ async function renderStudent(view) {
     <section class="cardGrid">
       ${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)}` : "学校別日程が未登録です", next ? "" : "alert")}
       ${metricCard("テストまで", next ? `${next.daysUntil}日` : "未設定", next ? "日本時間で計算" : "", next?.daysUntil <= 14 ? "alert" : "")}
-      ${metricCard("学校との比較", p.comparison || "未設定", p.subject || "英語・数学から選択", p.comparison === "学校より先" ? "" : "alert")}
+      ${studentComparisonMiniHtml(data)}
       <article class="card span12"><p class="cardTitle">進度の見える化</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り単元</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.urgent ? '<span class="badge bad">緊急</span>' : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article>
       <article class="card span12 studentHomeworkPanel"><p class="cardTitle">次回までの宿題</p><p><strong>宿題は2日以内に終わらせよう！</strong></p><div class="homeworkList">${homeworkHtml(data.homework || [], "student")}</div></article>
     </section>`;
