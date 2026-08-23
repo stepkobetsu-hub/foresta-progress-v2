@@ -1,0 +1,41 @@
+name: Verify live five-subject Apps Script 2026-08-23
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - verify-live-five-subject-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify live API v2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec'
+          GET_BODY="$(curl -L --fail-with-body -sS "$API")"
+          HEALTH="$(curl -L --fail-with-body -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"health"}' "$API")"
+          RESULT='UNEXPECTED'
+          if echo "$GET_BODY" | grep -q '"version":"2.2.0"'; then RESULT='V2_2_DEPLOYED'; fi
+          cat > LIVE_FIVE_SUBJECT_VERIFY.txt <<EOF
+          result=$RESULT
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          get=$GET_BODY
+          health=$HEALTH
+          EOF
+          cat LIVE_FIVE_SUBJECT_VERIFY.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LIVE_FIVE_SUBJECT_VERIFY.txt
+          git commit -m "Record live five-subject verification" || exit 0
+          git push origin HEAD:main
