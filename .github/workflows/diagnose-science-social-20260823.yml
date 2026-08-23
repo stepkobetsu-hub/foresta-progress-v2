@@ -1,4 +1,4 @@
-name: Diagnose science social patch 2026-08-23
+name: Apply five-subject student dashboard via existing runner
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  apply:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -21,26 +21,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run patch and capture result
+      - name: Apply dashboard patch
+        run: node scripts/apply-20260823-five-subject-student-dashboard.mjs
+      - name: Run tests
+        run: npm test
+      - name: Parse-check browser code
+        run: node --check app.js && node --check domain.js
+      - name: Verify dashboard markers
         shell: bash
         run: |
-          set +e
-          node scripts/apply-20260823-science-social.mjs > SCIENCE_SOCIAL_DIAG.txt 2>&1
-          code=$?
-          echo "exit_code=$code" >> SCIENCE_SOCIAL_DIAG.txt
-          npm test >> SCIENCE_SOCIAL_DIAG.txt 2>&1
-          echo "test_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
-          node --check app.js >> SCIENCE_SOCIAL_DIAG.txt 2>&1
-          echo "app_parse_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
-          cp apps-script/Code.gs /tmp/Code.js
-          node --check /tmp/Code.js >> SCIENCE_SOCIAL_DIAG.txt 2>&1
-          echo "gas_parse_exit=$?" >> SCIENCE_SOCIAL_DIAG.txt
-          set -e
-      - name: Commit diagnostic result
+          grep -q 'studentComparisonMiniHtml(data)' app.js
+          grep -q 'studentFiveSubjectGraph' app.js
+          grep -q 'five-subject student dashboard' styles.css
+          grep -q 'app.js?v=20260823-five-subject-dashboard' index.html
+      - name: Commit verified dashboard
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SCIENCE_SOCIAL_DIAG.txt
-          git commit -m "Record science social patch diagnostics" || exit 0
+          set -euo pipefail
+          if git diff --quiet -- app.js styles.css index.html; then
+            echo 'No source changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js styles.css index.html
+          git commit -m 'Improve five-subject student dashboard'
           git push origin HEAD:main
