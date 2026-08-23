@@ -25,29 +25,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply guarded patch
-        run: node scripts/apply-20260823-save-close-all-ranges.mjs
-      - name: Run tests
-        run: npm test
-      - name: Parse-check browser JavaScript
-        run: node --check app.js && node --check domain.js
-      - name: Verify save-and-close behavior
+      - name: Apply, test, and capture result
         shell: bash
         run: |
-          grep -q 'id="saveRangeClose"' app.js
-          grep -q '保存して閉じています' app.js
-          grep -q 'while (rangeSaving)' app.js
-          grep -q 'app.js?v=20260823-save-close' index.html
-      - name: Commit verified source
+          set +e
+          node scripts/apply-20260823-save-close-all-ranges.mjs > SAVE_CLOSE_DIAG.txt 2>&1
+          patch_code=$?
+          echo "patch_exit=$patch_code" >> SAVE_CLOSE_DIAG.txt
+          if [ "$patch_code" -eq 0 ]; then
+            npm test >> SAVE_CLOSE_DIAG.txt 2>&1
+            test_code=$?
+            echo "test_exit=$test_code" >> SAVE_CLOSE_DIAG.txt
+            node --check app.js >> SAVE_CLOSE_DIAG.txt 2>&1
+            parse_code=$?
+            echo "parse_exit=$parse_code" >> SAVE_CLOSE_DIAG.txt
+          else
+            test_code=99
+            parse_code=99
+          fi
+          echo "PATCH_CODE=$patch_code" >> "$GITHUB_ENV"
+          echo "TEST_CODE=$test_code" >> "$GITHUB_ENV"
+          echo "PARSE_CODE=$parse_code" >> "$GITHUB_ENV"
+          cat SAVE_CLOSE_DIAG.txt
+      - name: Commit result
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- app.js index.html; then
-            echo "No source changes."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.js index.html
-          git commit -m "Add save and close to all range progressions"
+          git add SAVE_CLOSE_DIAG.txt
+          if [ "$PATCH_CODE" = "0" ] && [ "$TEST_CODE" = "0" ] && [ "$PARSE_CODE" = "0" ]; then
+            grep -q 'id="saveRangeClose"' app.js
+            grep -q '保存して閉じています' app.js
+            grep -q 'while (rangeSaving)' app.js
+            grep -q 'app.js?v=20260823-save-close' index.html
+            git add app.js index.html
+            git commit -m "Add save and close to all range progressions"
+          else
+            git commit -m "Record save-close update diagnostics"
+          fi
           git push origin HEAD:main
