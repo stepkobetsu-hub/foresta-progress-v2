@@ -1,0 +1,5 @@
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      const note = display.note ? `<small class="studentHomeworkTaskNote">${esc(display.note)}</small>` : "";
+      return `<label class="studentHomeworkTask ${item.teacherChecked ? "confirmed" : ""}" title="${esc(display.title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong>${note}</span><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${item.teacherChecked ? "disabled" : ""}><b>${item.teacherChecked ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "講師確認済み" : item.studentChecked ? "保存済み" : "自動保存"}</small></span></label>`;
+    }).join("");
