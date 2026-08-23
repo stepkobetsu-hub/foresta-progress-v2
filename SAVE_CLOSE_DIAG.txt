@@ -1,17 +1,14 @@
-file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260823-save-close-all-ranges.mjs:49
-  .replace(/styles\.css\?v=[^\"]+/u, 'styles.css?v=20260823-save-close')
-           ^^^^^^^^^^^^^^^^^^^^^^^^
+Applied save-and-close button to all range progression tables.
+patch_exit=0
 
-SyntaxError: Invalid regular expression: /styles\.css\?v=[^\"]+/u: Invalid escape
-    at compileSourceTextModule (node:internal/modules/esm/utils:346:16)
-    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:110:18)
-    at #translate (node:internal/modules/esm/loader:559:20)
-    at afterLoad (node:internal/modules/esm/loader:612:29)
-    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:617:12)
-    at #createModuleJob (node:internal/modules/esm/loader:640:36)
-    at #getJobFromResolveResult (node:internal/modules/esm/loader:353:34)
-    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:321:41)
-    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:25)
+> test
+> node tests/domain.test.mjs && node tests/gas-pure.test.mjs && node tests/admin-entry.test.mjs && node tests/admin-range-entry.test.mjs && node tests/teacher-experience.test.mjs && node tests/japanese-progress.test.mjs
 
-Node.js v22.23.2
-patch_exit=1
+domain tests: five-subject progression assertions passed
+GAS pure tests: 30 assertions passed
+admin entry tests: 11 assertions passed
+admin range entry tests: 18 assertions passed
+teacher experience tests: five-subject assertions passed
+Japanese progression tests: 14 assertions passed
+test_exit=0
+parse_exit=0

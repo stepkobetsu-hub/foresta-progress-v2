@@ -715,7 +715,7 @@ async function openProgress(options) {
       ? '<span class="toolbarHint">各単元右側の「＋ 今日」を押して授業日を付けます。</span><button id="saveLesson" class="primaryBtn">授業と宿題を保存</button>'
       : options.mode === "correction"
         ? '<span class="toolbarHint">記録した単元を選び直してください。</span><button id="saveLesson" class="primaryBtn">宿題設定へ</button>'
-        : '<span class="toolbarHint">チェック変更は自動保存されます。</span><span id="rangeAutoSave" class="rangeAutoSave">すべて保存済み</span><button id="saveRange" class="ghostBtn compactManualSave" type="button">今すぐ保存</button>';
+        : '<span class="toolbarHint">チェック変更は自動保存されます。</span><span id="rangeAutoSave" class="rangeAutoSave">すべて保存済み</span><button id="saveRange" class="ghostBtn compactManualSave" type="button">今すぐ保存</button><button id="saveRangeClose" class="primaryBtn compactManualSave" type="button">保存して閉じる</button>';
     $("modalBody").innerHTML = `<h2>${esc(options.subject)} 進行表</h2><p>${esc(data.title || "進行表全体")}</p><div class="legend"><span><i style="background:var(--outside)"></i>予想範囲外</span><span><i style="background:var(--decided)"></i>決定範囲外</span><span><i style="background:var(--omit)"></i>省略可能</span><span><i style="background:var(--previous)"></i>前回範囲</span>${schoolLegend}</div>${editable ? `<div class="progressToolbar"><button id="selectAll" class="ghostBtn">全単元を選択</button><button id="clearAll" class="ghostBtn">全単元を解除</button><span id="selectedCount" class="badge">0単元</span>${progressActions}</div>` : ""}<div class="progressList">${rows || '<div class="emptyState">進行表未登録</div>'}</div>`;
     if ((options.mode === "lesson" || options.mode === "correction") && $("selectedCount") && state.dashboard?.student?.name) $("selectedCount").insertAdjacentHTML("afterend", `<strong class="progressStudentName">${esc(state.dashboard.student.name)}さん</strong>`);
     if (options.mode === "student") { await bindStudentRoundInputs_(options); return; }
@@ -728,7 +728,7 @@ async function openProgress(options) {
     let rangeDirty = false;
     const rangeStatus = () => $("rangeAutoSave");
     const saveRangeSelection = async () => {
-      if (!rangeMode) return;
+      if (!rangeMode) return true;
       if (rangeSaving) { rangeDirty = true; return; }
       clearTimeout(rangeSaveTimer);
       rangeSaving = true;
@@ -739,9 +739,11 @@ async function openProgress(options) {
         await api("saveRange", { ...options, unitIds }, { silent: true });
         invalidateProgressionCache(options);
         if (rangeStatus()) rangeStatus().textContent = "自動保存済み";
+        return true;
       } catch (error) {
         if (rangeStatus()) rangeStatus().textContent = "保存失敗・再試行してください";
         status(error.message, true);
+        return false;
       } finally {
         rangeSaving = false;
         if (rangeDirty) {
@@ -818,6 +820,26 @@ async function openProgress(options) {
       finally { button.disabled = false; }
     });
     if ($("saveRange")) $("saveRange").onclick = () => saveRangeSelection();
+    if ($("saveRangeClose")) $("saveRangeClose").onclick = async () => {
+      const button = $("saveRangeClose");
+      button.disabled = true;
+      button.textContent = "保存して閉じています…";
+      clearTimeout(rangeSaveTimer);
+      rangeDirty = false;
+      checks.forEach((check) => { check.disabled = true; });
+      groupToggles.forEach((toggle) => { toggle.disabled = true; });
+      if (rangeStatus()) rangeStatus().textContent = "保存して閉じています…";
+      while (rangeSaving) await new Promise((resolve) => setTimeout(resolve, 40));
+      const saved = await saveRangeSelection();
+      if (saved) {
+        closeModal();
+        return;
+      }
+      checks.forEach((check) => { check.disabled = false; });
+      groupToggles.forEach((toggle) => { toggle.disabled = false; });
+      button.disabled = false;
+      button.textContent = "保存して閉じる";
+    };
     if ($("saveLesson")) $("saveLesson").onclick = () => {
       const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
       if (!unitIds.length) return status(options.mode === "correction" ? "訂正後の単元を1つ以上選択してください。" : "今回進んだ単元を選択してください。", true);
