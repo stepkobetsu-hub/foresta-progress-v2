@@ -1,0 +1,54 @@
+name: Apply five-subject student dashboard 2026-08-23
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - five-subject-dashboard-trigger.txt
+
+permissions:
+  contents: write
+
+concurrency:
+  group: foresta-progress-v2-five-subject-dashboard
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply guarded patch
+        run: node scripts/apply-20260823-five-subject-student-dashboard.mjs
+      - name: Run existing tests
+        run: npm test
+      - name: Parse-check browser JavaScript
+        run: node --check app.js && node --check domain.js
+      - name: Verify dashboard changes
+        shell: bash
+        run: |
+          grep -q 'studentComparisonMiniHtml(data)' app.js
+          grep -q 'studentFiveSubjectGraph' app.js
+          grep -q '学校との比較' app.js
+          grep -q 'grid-template-columns:repeat(3' styles.css
+          grep -q 'app.js?v=20260823-five-subject-dashboard' index.html
+      - name: Commit verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- app.js styles.css index.html; then
+            echo "No source changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css index.html
+          git commit -m "Improve five-subject student dashboard"
+          git push origin HEAD:main
