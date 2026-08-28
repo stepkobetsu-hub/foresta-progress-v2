@@ -140,8 +140,8 @@
 
 /* 2026-08-23: readable homework labels */
 .studentHomeworkTasks{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
-.studentHomeworkTask{grid-template-columns:minmax(0,1fr) auto;align-items:center;min-height:84px;padding:10px 12px;gap:10px;overflow:visible}
-.studentHomeworkTaskLabel{display:grid;gap:3px;min-width:0}
+.studentHomeworkTask{grid-template-columns:minmax(0,1fr) auto;align-items:center;min-height:52px;padding:6px 9px;gap:8px;overflow:visible}
+.studentHomeworkTaskLabel{display:grid;gap:1px;min-width:0}
 .studentHomeworkTaskLabel strong{font-size:.75rem;line-height:1.45;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;color:inherit}
 .studentHomeworkTaskNote{display:block;color:var(--muted);font-size:.62rem;line-height:1.4;white-space:normal}
 .studentTaskRight{display:grid;justify-items:start;gap:4px;min-width:98px}
