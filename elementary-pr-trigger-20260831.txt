@@ -2,4 +2,4 @@ Elementary school support requested 2026-08-31.
 Math progression: 啓林館 小3〜小6 uploaded XLS.
 English progression: フォレスタ小学英語 I/II/III uploaded XLS.
 Japanese progression will be added later.
-Workflow retrigger: 1
+Workflow retrigger: 2
