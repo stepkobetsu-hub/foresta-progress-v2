@@ -29,7 +29,7 @@ t=Path('tests/gas-pure.test.mjs')
 ts=t.read_text()
 needle='console.log("GAS pure tests: 30 assertions passed");'
 if needle in ts and 'studentCourseInfo_' not in ts:
-    insert='''assert.match(code, /function studentCourseInfo_\\(studentId\\)/);\nassert.match(code, /live=timetableMap_\\(\\)\\[id\\]/);\nassert.match(code, /tt = studentCourseInfo_\\(student.studentId\\)/);\n'''
+    insert='''assert.match(source, /function studentCourseInfo_\\(studentId\\)/);\nassert.match(source, /live=timetableMap_\\(\\)\\[id\\]/);\nassert.match(source, /tt = studentCourseInfo_\\(student.studentId\\)/);\n'''
     ts=ts.replace(needle,insert+'console.log("GAS pure tests: live timetable source assertions passed");')
     t.write_text(ts)
 
