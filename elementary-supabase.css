@@ -27,3 +27,10 @@
 .elementaryTestScorePair small{font-size:.72rem;font-weight:700;color:#58716b}
 .elementarySubjectTestRow{min-height:48px}
 .elementarySubjectTestRow>strong{font-size:.86rem}
+
+/* Elementary homework sourced from the elementary progress backend. */
+.elementarySupabaseHomeworkItem{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid #dbe6e2;border-radius:12px;padding:10px 12px;background:#fbfdfc}
+.elementarySupabaseHomeworkItem>div{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;min-width:0}
+.elementarySupabaseHomeworkItem strong{font-size:.84rem;min-width:0}.elementarySupabaseHomeworkItem b{color:#0f6655;white-space:nowrap}.elementarySupabaseHomeworkItem time{font-size:.76rem;color:#64746f;white-space:nowrap}
+.elementaryHomeworkSubject{display:inline-flex;border-radius:999px;background:#e8f6f2;color:#136756;padding:3px 7px;font-size:.72rem;font-weight:900}
+@media(max-width:700px){.elementarySupabaseHomeworkItem{align-items:flex-start;flex-direction:column}.elementarySupabaseHomeworkItem>div{grid-template-columns:auto 1fr}.elementarySupabaseHomeworkItem b{grid-column:2;white-space:normal}}

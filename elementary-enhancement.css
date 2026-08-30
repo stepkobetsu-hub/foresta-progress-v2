@@ -12,3 +12,9 @@
 @media(max-width:1120px) and (min-width:721px){
   .elementaryTopTestForm .primaryBtn{justify-self:end!important;min-width:92px}
 }
+
+/* Place elementary test Save beside the explanation, above the entry row. */
+@media(min-width:721px){
+  .elementaryTopTestEntry{position:relative!important}
+  .elementaryTopTestForm>.primaryBtn{position:absolute!important;top:48px!important;right:18px!important;min-height:36px!important;padding:8px 16px!important;margin:0!important;z-index:2}
+}

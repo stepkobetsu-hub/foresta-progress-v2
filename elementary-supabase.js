@@ -225,6 +225,52 @@ async function saveElementaryTodayHomework(subject, unitId, lessonDate) {
 }
 
 
+function elementaryHomeworkTypeLabel(type) {
+  return ({ TRY_REDO: "TRYの赤×なおし", EXERCISE: "エクササイズ", TODAY_REDO: "本日の赤×なおし" })[String(type || "")] || String(type || "宿題");
+}
+
+async function elementaryHomeworkUnitMap(dashboard) {
+  const map = new Map();
+  for (const subject of CORE) {
+    const units = await unitsFor(subject, dashboard?.student?.grade, dashboard?.student?.englishLevel).catch(() => []);
+    units.forEach((u) => map.set(u.unitId, { subject, unitNumber: u.unitNumber || "", unitName: u.unitName || "" }));
+  }
+  return map;
+}
+
+async function replaceElementaryHomework(dashboard, data) {
+  const lists = [...document.querySelectorAll(".homeworkList")];
+  if (!lists.length) return;
+  const rows = (data?.homework || []).filter((r) => String(r.series || "").startsWith("ELEMENTARY:"));
+  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status].join("|")).join(";") || "empty";
+  const unitMap = await elementaryHomeworkUnitMap(dashboard);
+  const html = rows.length ? rows.map((r) => {
+    const meta = unitMap.get(r.unit_id) || {};
+    const subject = String(r.series || "").replace(/^ELEMENTARY:/, "") || meta.subject || "";
+    const unit = [meta.unitNumber, meta.unitName].filter(Boolean).join(" ") || r.unit_id || "";
+    const due = r.due_date ? shortDate(r.due_date) : "";
+    return `<div class="elementarySupabaseHomeworkItem"><div><span class="elementaryHomeworkSubject">${esc(subject)}</span><strong>${esc(unit)}</strong><b>${esc(elementaryHomeworkTypeLabel(r.homework_type))}</b></div>${due ? `<time>期限 ${esc(due)}</time>` : ""}</div>`;
+  }).join("") : '<div class="emptyState">現在の宿題はありません。</div>';
+  lists.forEach((list) => {
+    if (list.dataset.elementaryHomeworkSignature === signature) return;
+    list.dataset.elementaryHomeworkSignature = signature;
+    list.innerHTML = html;
+  });
+}
+
+let homeworkOnlyEnhancing = false;
+async function enhanceElementaryHomeworkOnly() {
+  if (homeworkOnlyEnhancing || !document.querySelector(".homeworkList")) return;
+  const session = readSession();
+  if (!session || !/^小[1-6]$/.test(normalizeGrade(session.grade || ""))) return;
+  homeworkOnlyEnhancing = true;
+  try {
+    const dashboard = lastDashboard || await loadDashboard().catch(() => null);
+    const data = await loadElementaryData(false).catch(() => null);
+    if (dashboard && data) await replaceElementaryHomework(dashboard, data);
+  } finally { homeworkOnlyEnhancing = false; }
+}
+
 function testScoreText(test) {
   if (!test) return "未登録";
   const front = `表 ${test.score ?? "-"}/${test.max_score || 100}`;
@@ -487,14 +533,13 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
     body.querySelectorAll('[data-action="today"]').forEach((input) => input.onchange = async () => {
       input.disabled = true;
       try {
+        const result = await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: input.checked });
+        elementaryDataCache.set(String(pageStudentId() || ""), result);
         if (input.checked) {
-          const saved = await saveElementaryTodayHomework(normalized, input.dataset.unit, today);
-          await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: true });
-          const count = Number(saved?.homeworkCount || 0);
-          status(count > 0 ? `今日の進行と宿題 ${count}件を保存しました。` : "今日の進行を保存しました。宿題はすでに作成済みです。");
+          const count = Number(result?.homeworkCreated || 0);
+          status(count > 0 ? `今日の進行を保存し、宿題 ${count}件を作成しました。` : "今日の進行を保存しました。宿題は作成済みです。");
         } else {
-          await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: false });
-          status("今日の進行を取り消しました。作成済みの宿題は安全のため残しています。必要なら『宿題・進行表を訂正』から修正してください。");
+          status("今日の進行を取り消しました。作成済みの宿題は残しています。");
         }
         await showInteractiveProgression(normalized, teacher);
         await refreshElementaryScreen(false);
@@ -552,6 +597,7 @@ async function refreshElementaryScreen(resetSignature = true) {
   const data = await loadElementaryData(true).catch(() => null);
   if (dashboard && data) {
     await updateTopCards(dashboard, data);
+    await replaceElementaryHomework(dashboard, data);
     await bindTopTestForm(dashboard);
   }
 }
@@ -586,7 +632,7 @@ async function enhanceElementary() {
     coreCards.sort((a, b) => CORE.indexOf(cardSubject(a)) - CORE.indexOf(cardSubject(b))).forEach((card) => grid.appendChild(card));
     extraDetails.hidden = !extraBody.querySelector(".elementarySubjectCard");
     const data = await loadElementaryData(false).catch((error) => { status(error.message, true); return null; });
-    if (data) await updateTopCards(dashboard, data);
+    if (data) { await updateTopCards(dashboard, data); await replaceElementaryHomework(dashboard, data); }
     await bindTopTestForm(dashboard);
     lastSignature = signature;
   } finally { enhancing = false; }
@@ -613,7 +659,7 @@ document.addEventListener("click", (event) => {
   }
 }, true);
 
-const observer = new MutationObserver(() => queueMicrotask(enhanceElementary));
+const observer = new MutationObserver(() => { queueMicrotask(enhanceElementary); queueMicrotask(enhanceElementaryHomeworkOnly); });
 observer.observe(document.documentElement, { childList: true, subtree: true });
-window.addEventListener("DOMContentLoaded", enhanceElementary);
-setTimeout(enhanceElementary, 500);
+window.addEventListener("DOMContentLoaded", () => { enhanceElementary(); enhanceElementaryHomeworkOnly(); });
+setTimeout(() => { enhanceElementary(); enhanceElementaryHomeworkOnly(); }, 500);

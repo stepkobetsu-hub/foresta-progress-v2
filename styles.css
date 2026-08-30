@@ -187,3 +187,8 @@
 .studentTabsBar .studentTabs{flex:1;min-width:0;margin:0}
 .selectedStudentChangeButton{flex:0 0 auto}
 @media(max-width:700px){.studentTabsBar{align-items:flex-start;flex-wrap:wrap}.studentTabsBar .studentTabs{flex-basis:100%}}
+
+/* Keep 生徒変更 close to the selected student pills, not at the far edge. */
+.studentTabsBar{justify-content:flex-start!important}
+.studentTabsBar .studentTabs{flex:0 1 auto!important;width:auto!important;max-width:calc(100% - 150px)!important}
+.selectedStudentChangeButton{margin-left:28px!important;flex:0 0 auto!important}
