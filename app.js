@@ -39,6 +39,14 @@ const REPEAT_HOMEWORK = {
 };
 let teacherSearchTimer = 0;
 const PROGRESSION_CACHE_TTL_MS = 120000;
+const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("fastv3") === "1";
+const FAST_RUNTIME_AUTH_ACTIONS = new Set(["studentLogin","staffLogin","resumeSession","logout","adminReauth","resumeAdminSession"]);
+const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead"]);
+function apiEndpointFor(action) {
+  if (!FAST_RUNTIME_ENABLED || FAST_RUNTIME_AUTH_ACTIONS.has(action) || !CONFIG.fastRuntimeApiUrl) return CONFIG.apiUrl;
+  return CONFIG.fastRuntimeApiUrl;
+}
+function usingFastRuntimeFor(action) { return apiEndpointFor(action) === CONFIG.fastRuntimeApiUrl; }
 
 function progressionCacheKey(options = {}) {
   if (options.mode === "range") return ["range", options.school || "", options.grade || "", options.subject || "", options.testId || "", options.rangeType || ""].join("|");
@@ -84,27 +92,45 @@ function prefetchProgression(options) {
 
 async function api(action, payload = {}, { silent = false } = {}) {
   if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CONFIG.requestTimeoutMs);
-  if (!silent) status("読み込み中…");
+  const requestBody = { action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload };
+  const attempt = async (endpoint, fastAttempt = false) => {
+    const controller = new AbortController();
+    const timeoutMs = fastAttempt ? Math.min(CONFIG.requestTimeoutMs, 12000) : CONFIG.requestTimeoutMs;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": fastAttempt ? "application/json" : "text/plain;charset=utf-8" },
+        body: JSON.stringify(requestBody),
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.message || "処理に失敗しました。");
+      return result;
+    } finally { clearTimeout(timer); }
+  };
+  if (!silent) status(FAST_RUNTIME_ENABLED && usingFastRuntimeFor(action) ? "高速保存中…" : "読み込み中…");
+  const endpoint = apiEndpointFor(action);
   try {
-    const response = await fetch(CONFIG.apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload }),
-      redirect: "follow",
-      signal: controller.signal,
-    });
-    const result = await response.json();
-    if (!response.ok || result.ok === false) throw new Error(result.message || "処理に失敗しました。");
+    const result = await attempt(endpoint, endpoint === CONFIG.fastRuntimeApiUrl);
     status("");
     return result;
   } catch (error) {
+    if (endpoint === CONFIG.fastRuntimeApiUrl) {
+      try {
+        const fallback = await attempt(CONFIG.apiUrl, false);
+        status("");
+        return { ...fallback, _fastRuntimeFallback: true };
+      } catch (fallbackError) {
+        status("");
+        if (fallbackError.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");
+        throw fallbackError;
+      }
+    }
     status("");
     if (error.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1294,11 +1320,19 @@ async function saveLessonWithHomework(options, homeworkByUnit) {
   if (button) { button.disabled = true; button.textContent = "保存中…"; }
   if ($("lessonSaveStatus")) $("lessonSaveStatus").textContent = "保存しています。画面を閉じずにお待ちください。";
   try {
-    await api(correcting ? "updateLessonCorrection" : "saveLesson", { studentId: options.studentId, subject: options.subject, lessonId: options.lessonId, teacherId: options.teacherId, unitIds: options.unitIds, homeworkByUnit, idempotencyKey: options.idempotencyKey, outsideRangeOverrideUnitIds: options.outsideRangeOverrideUnitIds || [] });
+    const saveResult = await api(correcting ? "updateLessonCorrection" : "saveLesson", { studentId: options.studentId, subject: options.subject, lessonId: options.lessonId, teacherId: options.teacherId, unitIds: options.unitIds, homeworkByUnit, idempotencyKey: options.idempotencyKey, outsideRangeOverrideUnitIds: options.outsideRangeOverrideUnitIds || [] });
     invalidateProgressionCache(options);
     delete state.teacherStudentCache[String(options.studentId)];
     delete $("modal").dataset.refreshTeacher;
     closeModal();
+    if (FAST_RUNTIME_ENABLED && saveResult?.queued && !saveResult?._fastRuntimeFallback) {
+      status(`${correcting ? "訂正内容を" : ""}保存しました（高速保存）。同期はバックグラウンドで続きます。`);
+      setTimeout(() => {
+        delete state.teacherStudentCache[String(options.studentId)];
+        if (state.activeView === "selected" && String(state.activeStudentId) === String(options.studentId)) openView("selected").catch(() => {});
+      }, 1800);
+      return;
+    }
     status(`${correcting ? "訂正内容を" : ""}保存しました。画面を更新しています…`);
     await openView("selected");
   } catch (error) {
