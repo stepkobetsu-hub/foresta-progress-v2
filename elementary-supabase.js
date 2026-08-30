@@ -188,14 +188,22 @@ function testScoreText(test) {
   return `${front}・${back}`;
 }
 
+function testScoreHtml(test) {
+  if (!test) return "";
+  const front = `<span>表 ${esc(test.score ?? "-")}/${esc(test.max_score || 100)}</span>`;
+  const hasBack = test.back_score !== null && test.back_score !== undefined && String(test.back_score) !== "";
+  const back = hasBack ? `<span>裏 ${esc(test.back_score)}/${esc(test.back_max_score || 50)}</span>` : `<span class="muted">裏 未入力</span>`;
+  return `${front}${back}`;
+}
+
 function recentTestsHtml(tests) {
   const subjectList = (subject) => {
     const rows = (tests || []).filter((t) => normalizeSubject(t.subject) === subject).slice(0, 6);
     if (!rows.length) return '<div class="emptyState compact">まだありません。</div>';
-    return `<div class="elementarySubjectTestList">${rows.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(testScoreText(t))}</b></div>`).join("")}</div>`;
+    return `<div class="elementarySubjectTestList">${rows.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b class="elementaryTestScorePair">${testScoreHtml(t)}</b></div>`).join("")}</div>`;
   };
   const eng = (tests || []).filter((t) => normalizeSubject(t.subject) === "英語").slice(0, 4);
-  return `<div class="elementaryRecentTestGrid"><section><h3>算数</h3>${subjectList("算数")}</section><section><h3>国語</h3>${subjectList("国語")}</section></div>${eng.length ? `<details class="elementaryOtherTests"><summary>英語の履歴</summary><div class="elementarySubjectTestList">${eng.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(testScoreText(t))}</b></div>`).join("")}</div></details>` : ""}`;
+  return `<div class="elementaryRecentTestGrid"><section><h3>算数</h3>${subjectList("算数")}</section><section><h3>国語</h3>${subjectList("国語")}</section></div>${eng.length ? `<details class="elementaryOtherTests"><summary>英語の履歴</summary><div class="elementarySubjectTestList">${eng.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b class="elementaryTestScorePair">${testScoreHtml(t)}</b></div>`).join("")}</div></details>` : ""}`;
 }
 
 function replaceRecentHistory(data) {
@@ -424,7 +432,7 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
         const dates = (lessonDates.get(u.unitId) || []).sort().reverse();
         const learned = dates.length > 0;
         const school = u.unitId === summary.school?.unit_id;
-        tableRows += `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td class="elementaryChapterTestBlank">—</td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`;
+        tableRows += `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"} ${esc(shortDate(today))}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td class="elementaryChapterTestBlank">—</td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`;
       }
     }
 

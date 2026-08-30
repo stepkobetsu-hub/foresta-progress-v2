@@ -12,3 +12,12 @@
 
 .elementaryFaceScores{display:grid;grid-template-columns:1fr 1fr;gap:12px}.elementaryFaceScores field{margin:0;padding:12px;border:1px solid #dbe6e2;border-radius:12px;background:#fbfdfc}.elementaryFaceScores legend{padding:0 7px;font-size:.82rem;font-weight:900;color:#185f51}.elementaryScoreInputs{display:grid;grid-template-columns:1fr 1fr;gap:10px}.elementaryDialogActions{display:grid;grid-template-columns:1fr 2fr;gap:10px}.elementaryDialogCancel{min-height:44px}.elementarySubjectTestRow{grid-template-columns:52px minmax(0,1fr) minmax(150px,auto)}.elementarySubjectTestRow strong{min-width:0;overflow-wrap:anywhere}.elementarySubjectTestRow b{text-align:right;white-space:nowrap;font-size:.82rem}.elementaryRecentTestGrid section{min-width:0}.cardGrid>.span8,.cardGrid>.span4{min-width:0}
 @media(max-width:700px){.elementaryFaceScores{grid-template-columns:1fr}.elementarySubjectTestRow{grid-template-columns:48px minmax(0,1fr)}.elementarySubjectTestRow b{grid-column:2;text-align:left;white-space:normal}}
+
+/* Elementary readability: keep subject labels and test history horizontal. */
+.elementarySubjectTestRow{grid-template-columns:46px minmax(120px,1fr) 96px!important;gap:10px!important;align-items:center!important;padding:9px 0!important}
+.elementarySubjectTestRow strong{writing-mode:horizontal-tb!important;word-break:normal!important;overflow-wrap:break-word!important;line-height:1.45!important}
+.elementaryTestScorePair{display:grid!important;gap:2px!important;text-align:right!important;white-space:normal!important;font-size:.78rem!important;line-height:1.25!important}
+.elementaryTestScorePair span{display:block!important;white-space:nowrap!important}
+.elementaryRecentTestGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:18px!important}
+.elementaryRecentTestGrid section{min-width:0!important;padding:14px!important}
+@media(max-width:760px){.elementaryRecentTestGrid{grid-template-columns:1fr!important}.elementarySubjectTestRow{grid-template-columns:44px minmax(0,1fr) 92px!important}}
