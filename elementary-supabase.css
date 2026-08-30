@@ -34,3 +34,8 @@
 .elementarySupabaseHomeworkItem strong{font-size:.84rem;min-width:0}.elementarySupabaseHomeworkItem b{color:#0f6655;white-space:nowrap}.elementarySupabaseHomeworkItem time{font-size:.76rem;color:#64746f;white-space:nowrap}
 .elementaryHomeworkSubject{display:inline-flex;border-radius:999px;background:#e8f6f2;color:#136756;padding:3px 7px;font-size:.72rem;font-weight:900}
 @media(max-width:700px){.elementarySupabaseHomeworkItem{align-items:flex-start;flex-direction:column}.elementarySupabaseHomeworkItem>div{grid-template-columns:auto 1fr}.elementarySupabaseHomeworkItem b{grid-column:2;white-space:normal}}
+
+/* Elementary homework uses the same checklist/card language as middle school. */
+.elementaryCustomHomeworkForm{display:grid;grid-template-columns:110px minmax(240px,1fr) auto;gap:10px;align-items:end;padding:12px;margin:0 0 12px;border:1px dashed #cddbd7;border-radius:12px;background:#f8fbfa}
+.elementaryCustomHomeworkForm label{display:grid;gap:5px;font-size:.76rem;font-weight:800;color:#52645f}.elementaryCustomHomeworkForm small{grid-column:1/-1;color:#7a8a86;font-size:.72rem;margin-top:-4px}.elementaryCustomHomeworkForm .ghostBtn{min-height:42px;white-space:nowrap}
+@media(max-width:720px){.elementaryCustomHomeworkForm{grid-template-columns:1fr}.elementaryCustomHomeworkForm small{grid-column:auto}}

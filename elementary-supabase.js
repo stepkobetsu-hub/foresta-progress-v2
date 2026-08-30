@@ -225,8 +225,10 @@ async function saveElementaryTodayHomework(subject, unitId, lessonDate) {
 }
 
 
-function elementaryHomeworkTypeLabel(type) {
-  return ({ TRY_REDO: "TRYの赤×なおし", EXERCISE: "エクササイズ", TODAY_REDO: "本日の赤×なおし" })[String(type || "")] || String(type || "宿題");
+function elementaryHomeworkTypeLabel(row) {
+  const type = String(row?.homework_type || "");
+  if (type === "OTHER") return String(row?.confirmation_memo || "その他の宿題");
+  return ({ TRY_REDO: "TRYの赤×なおし", EXERCISE: "エクササイズ", TODAY_REDO: "本日の赤×なおし" })[type] || type || "宿題";
 }
 
 async function elementaryHomeworkUnitMap(dashboard) {
@@ -238,24 +240,147 @@ async function elementaryHomeworkUnitMap(dashboard) {
   return map;
 }
 
-async function replaceElementaryHomework(dashboard, data) {
-  const lists = [...document.querySelectorAll(".homeworkList")];
-  if (!lists.length) return;
-  const rows = (data?.homework || []).filter((r) => String(r.series || "").startsWith("ELEMENTARY:"));
-  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status].join("|")).join(";") || "empty";
-  const unitMap = await elementaryHomeworkUnitMap(dashboard);
-  const html = rows.length ? rows.map((r) => {
-    const meta = unitMap.get(r.unit_id) || {};
-    const subject = String(r.series || "").replace(/^ELEMENTARY:/, "") || meta.subject || "";
-    const unit = [meta.unitNumber, meta.unitName].filter(Boolean).join(" ") || r.unit_id || "";
-    const due = r.due_date ? shortDate(r.due_date) : "";
-    return `<div class="elementarySupabaseHomeworkItem"><div><span class="elementaryHomeworkSubject">${esc(subject)}</span><strong>${esc(unit)}</strong><b>${esc(elementaryHomeworkTypeLabel(r.homework_type))}</b></div>${due ? `<time>期限 ${esc(due)}</time>` : ""}</div>`;
-  }).join("") : '<div class="emptyState">現在の宿題はありません。</div>';
-  lists.forEach((list) => {
-    if (list.dataset.elementaryHomeworkSignature === signature) return;
-    list.dataset.elementaryHomeworkSignature = signature;
-    list.innerHTML = html;
+function elementaryStudentChecked(row) { return String(row?.student_status || "") === "COMPLETED"; }
+function elementaryTeacherChecked(row) { return String(row?.teacher_status || "") === "CONFIRMED"; }
+
+function elementaryHomeworkGroups(rows, unitMap) {
+  const groups = new Map();
+  for (const row of rows) {
+    const subject = String(row.series || "").replace(/^ELEMENTARY:/, "");
+    const custom = String(row.homework_type || "") === "OTHER";
+    const meta = unitMap.get(row.unit_id) || {};
+    const key = custom ? `custom|${row.homework_id}` : `${subject}|${row.assigned_date || ""}|${row.unit_id || ""}`;
+    if (!groups.has(key)) groups.set(key, {
+      subject,
+      unitNumber: custom ? "" : (meta.unitNumber || ""),
+      unitName: custom ? "その他の宿題" : (meta.unitName || row.unit_id || "宿題"),
+      assignedDate: row.assigned_date || "",
+      dueDate: row.due_date || "",
+      items: [],
+    });
+    groups.get(key).items.push(row);
+  }
+  return [...groups.values()];
+}
+
+function elementaryHomeworkCards(groups, teacherMode) {
+  if (!groups.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return groups.map((group) => {
+    const tasks = group.items.map((row) => {
+      const title = elementaryHomeworkTypeLabel(row);
+      const studentChecked = elementaryStudentChecked(row);
+      const teacherChecked = elementaryTeacherChecked(row);
+      if (teacherMode) {
+        return `<label class="studentHomeworkTask teacherAssignedTask ${teacherChecked ? "confirmed" : ""}"><span class="studentHomeworkTaskLabel"><strong>${esc(title)}</strong><small class="teacherStudentState">生徒：${studentChecked ? "チェック済み" : "未チェック"}</small></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="elementaryTeacherHomeworkCheck" type="checkbox" data-id="${esc(row.homework_id)}" ${teacherChecked ? "checked" : ""}><b>${teacherChecked ? "講師確認済み" : "講師チェック"}</b></span><small class="homeworkSaveState">${teacherChecked ? "完了" : "講師確認で完了"}</small></span></label>`;
+      }
+      const disabled = teacherChecked;
+      let saveText = "自動保存";
+      if (teacherChecked) saveText = "講師確認済み";
+      else if (studentChecked) saveText = "講師確認待ち";
+      return `<label class="studentHomeworkTask ${teacherChecked ? "confirmed" : ""}" title="${esc(title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(title)}</strong></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="elementaryStudentHomeworkCheck" type="checkbox" data-id="${esc(row.homework_id)}" ${studentChecked ? "checked" : ""} ${disabled ? "disabled" : ""}><b>${disabled ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${esc(saveText)}</small></span></label>`;
+    }).join("");
+    const unit = [group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題";
+    return `<article class="studentHomeworkCard ${teacherMode ? "teacherHomeworkCard" : ""} ${group.subject === "算数" ? "math" : group.subject === "国語" ? "japanese" : group.subject === "英語" ? "english" : "other"}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(group.subject || "宿題")}</span><span class="roundPill">授業宿題</span></div><strong>${esc(unit)}</strong><small>宿題 ${esc(shortDate(group.assignedDate))}　期限 ${esc(shortDate(group.dueDate))}</small><small class="homeworkCompletionRule">講師からの宿題：講師チェックで完了</small></div><div class="studentHomeworkTasks ${teacherMode ? "teacherHomeworkTasks" : ""}">${tasks}</div></article>`;
+  }).join("");
+}
+
+async function bindElementaryHomeworkChecks(dashboard) {
+  document.querySelectorAll('.elementaryStudentHomeworkCheck').forEach((input) => {
+    input.onchange = async () => {
+      const checked = input.checked;
+      input.disabled = true;
+      try {
+        const result = await callElementary('studentCheckHomework', { homeworkId: input.dataset.id, checked });
+        result.studentId = String(pageStudentId() || "");
+        elementaryDataCache.set(result.studentId, result);
+        lastElementaryData = result;
+        status(checked ? '宿題をチェックしました。' : '宿題のチェックを外しました。');
+        await replaceElementaryHomework(dashboard, result);
+      } catch (error) {
+        input.checked = !checked;
+        input.disabled = false;
+        status(error.message, true);
+      }
+    };
   });
+  document.querySelectorAll('.elementaryTeacherHomeworkCheck').forEach((input) => {
+    input.onchange = async () => {
+      const checked = input.checked;
+      input.disabled = true;
+      try {
+        const result = await callElementary('teacherCheckHomework', { homeworkId: input.dataset.id, checked });
+        result.studentId = String(pageStudentId() || "");
+        elementaryDataCache.set(result.studentId, result);
+        lastElementaryData = result;
+        status(checked ? '宿題を講師確認済みにしました。' : '講師確認を取り消しました。');
+        await replaceElementaryHomework(dashboard, result);
+      } catch (error) {
+        input.checked = !checked;
+        input.disabled = false;
+        status(error.message, true);
+      }
+    };
+  });
+}
+
+function ensureElementaryCustomHomeworkForm(dashboard) {
+  if (!isTeacherContext(readSession())) return;
+  const list = [...document.querySelectorAll('.homeworkList')].find((node) => node.closest('.card')?.querySelector('.cardTitle')?.textContent.includes('宿題'));
+  if (!list || list.parentElement.querySelector('.elementaryCustomHomeworkForm')) return;
+  const subjects = enrolledSubjects(dashboard);
+  list.insertAdjacentHTML('beforebegin', `<form class="elementaryCustomHomeworkForm"><label>科目<select class="field elementaryCustomHomeworkSubject">${subjects.map((s) => `<option>${esc(s)}</option>`).join('')}</select></label><label class="elementaryCustomHomeworkText">その他の宿題（任意）<input class="field" maxlength="120" placeholder="例：漢字ドリル p.20〜21"></label><button class="ghostBtn" type="submit">追加</button><small>必要なときだけ入力します。</small></form>`);
+  const form = list.parentElement.querySelector('.elementaryCustomHomeworkForm');
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const input = form.querySelector('.elementaryCustomHomeworkText input');
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const result = await callElementary('addCustomHomework', { subject: form.querySelector('.elementaryCustomHomeworkSubject').value, customText: text, assignedDate: todayJst() });
+      result.studentId = String(pageStudentId() || "");
+      elementaryDataCache.set(result.studentId, result);
+      lastElementaryData = result;
+      input.value = '';
+      status('その他の宿題を追加しました。');
+      await replaceElementaryHomework(dashboard, result);
+    } catch (error) {
+      status(error.message, true);
+      button.disabled = false;
+    }
+  };
+}
+
+async function replaceElementaryHomework(dashboard, data) {
+  const lists = [...document.querySelectorAll('.homeworkList')];
+  if (!lists.length) return;
+  const rows = (data?.homework || []).filter((r) => String(r.series || '').startsWith('ELEMENTARY:'));
+  const unitMap = await elementaryHomeworkUnitMap(dashboard);
+  const groups = elementaryHomeworkGroups(rows, unitMap);
+  const teacherMode = isTeacherContext(readSession());
+  const html = elementaryHomeworkCards(groups, teacherMode);
+  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status, r.confirmation_memo].join('|')).join(';') || 'empty';
+  lists.forEach((list) => {
+    if (list.dataset.elementaryHomeworkSignature !== signature || list.dataset.elementaryHomeworkMode !== String(teacherMode)) {
+      list.dataset.elementaryHomeworkSignature = signature;
+      list.dataset.elementaryHomeworkMode = String(teacherMode);
+      list.innerHTML = html;
+    }
+  });
+  const completed = rows.filter(elementaryTeacherChecked).length;
+  if (teacherMode) {
+    const list = lists[0];
+    const card = list?.closest('.card');
+    const summary = card?.querySelector('p.muted');
+    if (summary && /完了/.test(summary.textContent)) summary.textContent = `完了 ${completed}/${rows.length}`;
+    ensureElementaryCustomHomeworkForm(dashboard);
+  } else if (document.querySelector('.pageHead h1')?.textContent.includes('次回までの宿題')) {
+    const values = [...document.querySelectorAll('.bigValue')];
+    if (values[0]) values[0].textContent = `${completed}/${rows.length}`;
+    if (values[1]) values[1].textContent = `${rows.length - completed}/${rows.length}`;
+  }
+  await bindElementaryHomeworkChecks(dashboard);
 }
 
 let homeworkOnlyEnhancing = false;
