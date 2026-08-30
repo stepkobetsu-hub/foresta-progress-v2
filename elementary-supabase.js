@@ -240,7 +240,7 @@ function unitSelectOptions(units, selected = "") {
 
 async function bindTopTestForm(dashboard) {
   const session = readSession();
-  if (!isTeacherContext(session)) return;
+  if (!document.querySelector(".elementaryTeacherGuide") && !isTeacherContext(session)) return;
   const form = document.getElementById("elementaryTopTestForm");
   if (!form) return;
   const subjects = enrolledSubjects(dashboard);
@@ -320,7 +320,7 @@ function openTestDialog({ subject, unit, onSaved }) {
   dialog.showModal();
 }
 
-async function showInteractiveProgression(subject) {
+async function showInteractiveProgression(subject, forceTeacher = false) {
   const dashboard = lastDashboard || await loadDashboard().catch(() => null);
   const session = readSession();
   const grade = dashboard?.student?.grade || session?.grade || "";
@@ -341,7 +341,7 @@ async function showInteractiveProgression(subject) {
       if (!lessonDates.has(row.unit_id)) lessonDates.set(row.unit_id, []);
       lessonDates.get(row.unit_id).push(row.lesson_date);
     }
-    const teacher = isTeacherContext(session);
+    const teacher = forceTeacher || isTeacherContext(session);
     openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "中学生と同じように、今日の進行・学校の現在地・単元テストをこの表で入力できます。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${units.map((u) => { const dates=(lessonDates.get(u.unitId)||[]).sort().reverse(); const learned=dates.length>0; const school=u.unitId===summary.school?.unit_id; return `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong><small>${esc(u.chapter || "")}</small>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td><button type="button" class="elementaryInlineTest" data-action="test" data-unit="${esc(u.unitId)}">📝 テスト</button></td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`; }).join("")}</tbody></table></div></div>`);
     if (!teacher) return;
     const body = document.getElementById("modalBody");
@@ -350,7 +350,7 @@ async function showInteractiveProgression(subject) {
       try {
         await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: input.checked });
         status(input.checked ? "今日の進行を保存しました。" : "今日の進行を取り消しました。");
-        await showInteractiveProgression(normalized);
+        await showInteractiveProgression(normalized, teacher);
         await refreshElementaryScreen(false);
       } catch (error) {
         input.checked = !input.checked;
@@ -363,7 +363,7 @@ async function showInteractiveProgression(subject) {
       try {
         await callElementary("saveSchoolPosition", { subject: normalized, unitId: button.dataset.unit, recordedDate: today });
         status("学校の現在地を保存しました。");
-        await showInteractiveProgression(normalized);
+        await showInteractiveProgression(normalized, teacher);
         await refreshElementaryScreen(false);
       } catch (error) {
         button.disabled = false;
@@ -372,7 +372,7 @@ async function showInteractiveProgression(subject) {
     });
     body.querySelectorAll('[data-action="test"]').forEach((button) => button.onclick = () => {
       const unit = units.find((u) => u.unitId === button.dataset.unit);
-      openTestDialog({ subject: normalized, unit, onSaved: async () => { await showInteractiveProgression(normalized); await refreshElementaryScreen(false); } });
+      openTestDialog({ subject: normalized, unit, onSaved: async () => { await showInteractiveProgression(normalized, teacher); await refreshElementaryScreen(false); } });
     });
   } catch (error) {
     openModal(`<div class="card dangerCard"><h2>進行表を表示できませんでした</h2><p>${esc(error.message)}</p></div>`);
@@ -453,7 +453,7 @@ document.addEventListener("click", (event) => {
     if (CORE.includes(subject)) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      showInteractiveProgression(subject);
+      showInteractiveProgression(subject, progressButton.classList.contains("elementaryOpenProgress"));
       return;
     }
   }
