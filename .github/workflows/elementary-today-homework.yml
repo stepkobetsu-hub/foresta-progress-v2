@@ -1,0 +1,29 @@
+name: Elementary today creates homework
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/elementary-today-homework.py
+      - .github/workflows/elementary-today-homework.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: python scripts/elementary-today-homework.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - name: Commit elementary homework integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js elementary-supabase.js index.html
+          git commit -m "Create elementary homework from today progress checks"
+          git push origin HEAD:main
