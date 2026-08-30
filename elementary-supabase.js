@@ -238,6 +238,29 @@ function unitSelectOptions(units, selected = "") {
   return '<option value="">単元を選ぶ</option>' + units.map((u) => `<option value="${esc(u.unitId)}" ${u.unitId === selected ? "selected" : ""}>${esc([u.unitNumber, u.unitName].filter(Boolean).join(" "))}</option>`).join("");
 }
 
+
+function chapterGroups(units, subject = "") {
+  const groups = new Map();
+  for (const [index, unit] of (units || []).entries()) {
+    const raw = String(unit.chapter || String(unit.unitNumber || "").split("-")[0] || index + 1).trim();
+    if (!groups.has(raw)) {
+      groups.set(raw, {
+        key: raw,
+        unitId: `chapter:${normalizeSubject(subject)}:${raw}`,
+        unitName: `第${raw}章 ${unit.unitName || "単元テスト"}`,
+        title: unit.unitName || `第${raw}章`,
+        units: [],
+      });
+    }
+    groups.get(raw).units.push(unit);
+  }
+  return [...groups.values()];
+}
+
+function chapterSelectOptions(groups, selected = "") {
+  return '<option value="">大きな単元（章）を選ぶ</option>' + groups.map((g) => `<option value="${esc(g.unitId)}" ${g.unitId === selected ? "selected" : ""}>${esc(g.unitName)}</option>`).join("");
+}
+
 async function bindTopTestForm(dashboard) {
   const session = readSession();
   if (!document.querySelector(".elementaryTeacherGuide") && !isTeacherContext(session)) return;
@@ -253,13 +276,17 @@ async function bindTopTestForm(dashboard) {
   const maxEl = form.querySelector("#elementaryTopTestMax");
   const output = document.getElementById("elementaryTopTestStatus");
   if (!subjectEl || !dateEl || !scoreEl || !maxEl) return;
-  subjectEl.innerHTML = subjects.map((s) => `<option>${esc(s)}</option>`).join("");
+  subjectEl.innerHTML = subjects.map((subject) => `<option>${esc(subject)}</option>`).join("");
   if (!dateEl.value) dateEl.value = todayJst();
+  let groups = [];
   const refresh = async () => {
     const units = await unitsFor(subjectEl.value, dashboard?.student?.grade, dashboard?.student?.englishLevel).catch(() => []);
-    if (unitEl) unitEl.innerHTML = unitSelectOptions(units);
-    unitWrap?.classList.toggle("hidden", !units.length);
-    freeWrap?.classList.toggle("hidden", !!units.length);
+    groups = chapterGroups(units, subjectEl.value);
+    if (unitEl) unitEl.innerHTML = chapterSelectOptions(groups);
+    unitWrap?.classList.toggle("hidden", !groups.length);
+    freeWrap?.classList.toggle("hidden", !!groups.length);
+    const unitLabel = unitWrap?.querySelector('label') || unitWrap;
+    if (unitLabel && unitWrap) unitWrap.childNodes[0] && (unitWrap.childNodes[0].textContent = '大きな単元（章）');
   };
   subjectEl.onchange = refresh;
   await refresh();
@@ -267,15 +294,22 @@ async function bindTopTestForm(dashboard) {
     event.preventDefault();
     event.stopImmediatePropagation();
     const button = form.querySelector('button[type="submit"]');
-    const hasUnits = unitWrap && !unitWrap.classList.contains("hidden");
-    const selectedUnitId = hasUnits ? unitEl?.value || "" : "";
-    const selectedUnit = hasUnits ? (await unitsFor(subjectEl.value, dashboard?.student?.grade, dashboard?.student?.englishLevel)).find((u) => u.unitId === selectedUnitId) : null;
-    const unitName = selectedUnit?.unitName || form.querySelector("#elementaryTopTestFree")?.value.trim() || "";
-    if (!unitName) { if (output) output.textContent = "単元を選んでください。"; return; }
+    const hasGroups = unitWrap && !unitWrap.classList.contains("hidden");
+    const selected = hasGroups ? groups.find((g) => g.unitId === unitEl?.value) : null;
+    const unitName = selected?.unitName || form.querySelector("#elementaryTopTestFree")?.value.trim() || "";
+    if (!unitName) { if (output) output.textContent = "大きな単元（章）を選んでください。"; return; }
     button.disabled = true;
     if (output) output.textContent = "保存しています…";
     try {
-      await callElementary("saveUnitTest", { subject: normalizeSubject(subjectEl.value), unitId: selectedUnitId, unitName, testDate: dateEl.value || todayJst(), score: scoreEl.value, maxScore: maxEl.value || 100, memo: "" });
+      await callElementary("saveUnitTest", {
+        subject: normalizeSubject(subjectEl.value),
+        unitId: selected?.unitId || "",
+        unitName,
+        testDate: dateEl.value || todayJst(),
+        score: scoreEl.value,
+        maxScore: maxEl.value || 100,
+        memo: "",
+      });
       if (output) output.textContent = "保存しました。";
       scoreEl.value = "";
       status("学校の単元テストを保存しました。");
@@ -334,6 +368,8 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
     const summary = summaryFor(normalized, units, data);
     const source = normalized === "算数" ? "啓林館" : `フォレスタ小学英語 ${englishKey(level) || ""}`.trim();
     const today = todayJst();
+    const teacher = forceTeacher || isTeacherContext(session);
+    const groups = chapterGroups(units, normalized);
     const todaySet = new Set((data.lessonProgress || []).filter((r) => normalizeSubject(r.subject) === normalized && r.lesson_date === today).map((r) => r.unit_id));
     const lessonDates = new Map();
     for (const row of data.lessonProgress || []) {
@@ -341,8 +377,25 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
       if (!lessonDates.has(row.unit_id)) lessonDates.set(row.unit_id, []);
       lessonDates.get(row.unit_id).push(row.lesson_date);
     }
-    const teacher = forceTeacher || isTeacherContext(session);
-    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "中学生と同じように、今日の進行・学校の現在地・単元テストをこの表で入力できます。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${units.map((u) => { const dates=(lessonDates.get(u.unitId)||[]).sort().reverse(); const learned=dates.length>0; const school=u.unitId===summary.school?.unit_id; return `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong><small>${esc(u.chapter || "")}</small>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td><button type="button" class="elementaryInlineTest" data-action="test" data-unit="${esc(u.unitId)}">📝 テスト</button></td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`; }).join("")}</tbody></table></div></div>`);
+    const testMap = new Map();
+    for (const row of data.unitTests || []) {
+      if (normalizeSubject(row.subject) !== normalized) continue;
+      if (!testMap.has(row.unit_id)) testMap.set(row.unit_id, row);
+    }
+
+    let tableRows = "";
+    for (const group of groups) {
+      const groupTest = testMap.get(group.unitId);
+      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>第${esc(group.key)}章</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(groupTest.score)}点` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(groupTest.score)}点` : ""}</td>`}</tr>`;
+      for (const u of group.units) {
+        const dates = (lessonDates.get(u.unitId) || []).sort().reverse();
+        const learned = dates.length > 0;
+        const school = u.unitId === summary.school?.unit_id;
+        tableRows += `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td class="elementaryChapterTestBlank">—</td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`;
+      }
+    }
+
+    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "今日の塾進度と学校進度は小単元ごと、学校の単元テストは大きな単元（章）ごとに入力します。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>学校単元テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`);
     if (!teacher) return;
     const body = document.getElementById("modalBody");
     body.querySelectorAll('[data-action="today"]').forEach((input) => input.onchange = async () => {
@@ -370,9 +423,10 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
         status(error.message, true);
       }
     });
-    body.querySelectorAll('[data-action="test"]').forEach((button) => button.onclick = () => {
-      const unit = units.find((u) => u.unitId === button.dataset.unit);
-      openTestDialog({ subject: normalized, unit, onSaved: async () => { await showInteractiveProgression(normalized, teacher); await refreshElementaryScreen(false); } });
+    body.querySelectorAll('[data-action="chapter-test"]').forEach((button) => button.onclick = () => {
+      const group = groups.find((g) => g.key === button.dataset.chapter);
+      if (!group) return;
+      openTestDialog({ subject: normalized, unit: { unitId: group.unitId, unitName: group.unitName }, onSaved: async () => { await showInteractiveProgression(normalized, teacher); await refreshElementaryScreen(false); } });
     });
   } catch (error) {
     openModal(`<div class="card dangerCard"><h2>進行表を表示できませんでした</h2><p>${esc(error.message)}</p></div>`);
@@ -462,12 +516,7 @@ document.addEventListener("click", (event) => {
     const subject = normalizeSubject(testButton.dataset.subject || testButton.closest(".elementarySubjectCard")?.querySelector(".subjectPill")?.textContent);
     event.preventDefault();
     event.stopImmediatePropagation();
-    (async () => {
-      const dashboard = lastDashboard || await loadDashboard();
-      const units = await unitsFor(subject, dashboard?.student?.grade, dashboard?.student?.englishLevel).catch(() => []);
-      const first = units[0] || { unitId: "", unitName: `${subject} 単元テスト` };
-      openTestDialog({ subject, unit: first, onSaved: () => refreshElementaryScreen() });
-    })();
+    showInteractiveProgression(subject, true);
   }
 }, true);
 
