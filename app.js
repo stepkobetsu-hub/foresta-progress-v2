@@ -193,6 +193,16 @@ function endTeacherLesson() {
   openView("search");
 }
 
+window.__FORESTA_INVALIDATE_TEACHER_STUDENT__ = (studentId) => {
+  const id = String(studentId || state.activeStudentId || "");
+  if (!id) return;
+  delete state.teacherStudentCache[id];
+  if (String(state.activeStudentId || "") === id) {
+    state.dashboard = null;
+    window.__FORESTA_ACTIVE_DASHBOARD__ = null;
+  }
+};
+
 function changeTeacherStudent() {
   if (state.role !== "teacher") return;
   const activeId = String(state.activeStudentId || "");

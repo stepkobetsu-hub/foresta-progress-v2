@@ -193,6 +193,37 @@ function setDifferenceBadge(el, value, label) {
   el.classList.add(value == null ? "unset" : value > 0 ? "ahead" : value < 0 ? "behind" : "same");
 }
 
+function defaultElementaryHomework(subject) {
+  const normalized = normalizeSubject(subject);
+  if (normalized === "国語") return ["本日の赤×なおし"];
+  if (normalized === "算数" || normalized === "英語") return ["TRYの赤×なおし", "エクササイズ"];
+  return [];
+}
+
+async function saveElementaryTodayHomework(subject, unitId, lessonDate) {
+  const session = readSession();
+  if (!isTeacherContext(session)) return { saved: false, homeworkCount: 0 };
+  const studentId = String(pageStudentId() || "");
+  if (!studentId || !unitId) return { saved: false, homeworkCount: 0 };
+  const normalized = normalizeSubject(subject);
+  const items = defaultElementaryHomework(normalized);
+  if (!items.length) return { saved: false, homeworkCount: 0 };
+  const teacherId = document.getElementById("elementaryLessonTeacher")?.value || session?.loginId || "";
+  const result = await callApi("saveLesson", {
+    studentId,
+    subject: normalized,
+    unitIds: [unitId],
+    teacherId,
+    idempotencyKey: `ELEM-AUTO|${studentId}|${normalized}|${unitId}|${lessonDate}`,
+    homeworkItems: items,
+    homeworkByUnit: { [unitId]: items },
+    outsideRangeOverrideUnitIds: [unitId],
+  });
+  window.__FORESTA_INVALIDATE_TEACHER_STUDENT__?.(studentId);
+  lastDashboard = null;
+  return result;
+}
+
 
 function testScoreText(test) {
   if (!test) return "未登録";
@@ -456,8 +487,15 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
     body.querySelectorAll('[data-action="today"]').forEach((input) => input.onchange = async () => {
       input.disabled = true;
       try {
-        await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: input.checked });
-        status(input.checked ? "今日の進行を保存しました。" : "今日の進行を取り消しました。");
+        if (input.checked) {
+          const saved = await saveElementaryTodayHomework(normalized, input.dataset.unit, today);
+          await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: true });
+          const count = Number(saved?.homeworkCount || 0);
+          status(count > 0 ? `今日の進行と宿題 ${count}件を保存しました。` : "今日の進行を保存しました。宿題はすでに作成済みです。");
+        } else {
+          await callElementary("toggleLesson", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, checked: false });
+          status("今日の進行を取り消しました。作成済みの宿題は安全のため残しています。必要なら『宿題・進行表を訂正』から修正してください。");
+        }
         await showInteractiveProgression(normalized, teacher);
         await refreshElementaryScreen(false);
       } catch (error) {
