@@ -1,13 +1,2 @@
-file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:13
-function once(src,find,repl,label){const n=src.split(find).length-1;if(n!==1)throw new Error(`${label}: ${n} matches`);return src.replace(find,repl)}
-                                                                                   ^
-
-Error: homework guide: 0 matches
-    at once (file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:13:84)
-    at file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:29:5
-    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
-    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
-    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
-
-Node.js v22.23.2
-exit_code=1
+Applied elementary-school support from uploaded math/English progression tables.
+exit_code=0
