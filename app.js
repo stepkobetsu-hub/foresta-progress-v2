@@ -28,7 +28,7 @@ const state = {
   progressionPromises: new Map(),
 };
 
-const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache", teacherSelection: "forestaTeacherLessonSelection" };
+const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache", teacherSelection: "forestaTeacherLessonSelection", teacherSubjects: "forestaTeacherSubjectSelection" };
 const DEFAULT_HOMEWORK = {
   数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],
   英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
@@ -183,6 +183,7 @@ function restoreTeacherLessonSelection() {
 }
 
 function endTeacherLesson() {
+  clearTeacherSubjectsForCurrentLesson();
   localStorage.removeItem(KEYS.teacherSelection);
   state.selectedStudents = [];
   state.activeStudentId = "";
@@ -233,30 +234,68 @@ function homeworkSubjectKey(value) {
   const s = String(value || "").trim();
   return s === "数学" || s === "算数" ? "MATH" : s;
 }
+function teacherSubjectStorageKey(studentId = state.activeStudentId) {
+  return `${String(state.session?.loginId || "teacher")}|${String(studentId || "")}`;
+}
+function teacherSubjectStore() {
+  try { return JSON.parse(localStorage.getItem(KEYS.teacherSubjects) || "{}") || {}; }
+  catch (_) { return {}; }
+}
+function savedTeacherSubject(studentId = state.activeStudentId, choices = []) {
+  const value = String(teacherSubjectStore()[teacherSubjectStorageKey(studentId)] || "");
+  if (!value) return "";
+  if (!choices?.length) return value;
+  return choices.includes(value) ? value : "";
+}
+function rememberTeacherSubject(subject, studentId = state.activeStudentId) {
+  const value = String(subject || "").trim();
+  teacherHomeworkSubjectMemory = value;
+  if (!studentId) return;
+  const store = teacherSubjectStore();
+  const key = teacherSubjectStorageKey(studentId);
+  if (value) store[key] = value;
+  else delete store[key];
+  localStorage.setItem(KEYS.teacherSubjects, JSON.stringify(store));
+}
+function clearTeacherSubjectsForCurrentLesson() {
+  const store = teacherSubjectStore();
+  const prefix = `${String(state.session?.loginId || "teacher")}|`;
+  for (const student of state.selectedStudents || []) delete store[`${prefix}${String(student.studentId || "")}`];
+  localStorage.setItem(KEYS.teacherSubjects, JSON.stringify(store));
+  teacherHomeworkSubjectMemory = "";
+}
 function currentTeacherHomeworkSubject() {
   if (state.role !== "teacher") return "";
-  const subjectValues = new Set(["国語","数学","算数","英語","理科","社会"]);
-  const selects = [...document.querySelectorAll("select")].filter((select) => subjectValues.has(String(select.value || "").trim()));
-  const eligible = selects.filter((select) => !/top.?test|test.?subject|score/i.test(`${select.id} ${select.name} ${select.className}`));
-  const preferred = eligible.find((select) => /lesson|course|subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || eligible[0] || selects[0];
-  if (preferred?.value) teacherHomeworkSubjectMemory = String(preferred.value).trim();
-  return teacherHomeworkSubjectMemory;
+  const explicit = document.getElementById("lessonSubject") || document.getElementById("elementaryLessonSubject");
+  if (explicit) {
+    const value = String(explicit.value || "").trim();
+    teacherHomeworkSubjectMemory = value;
+    return value;
+  }
+  const saved = savedTeacherSubject(state.activeStudentId);
+  if (saved) teacherHomeworkSubjectMemory = saved;
+  return saved || teacherHomeworkSubjectMemory || "";
 }
 function applyTeacherHomeworkSubjectFilter() {
   if (state.role !== "teacher") return;
   const selected = currentTeacherHomeworkSubject();
-  if (!selected) return;
+  const cards = [...document.querySelectorAll(".teacherHomeworkCard,.archivedHomeworkCard")];
+  const prompts = [...document.querySelectorAll(".teacherHomeworkSubjectPrompt")];
+  prompts.forEach((node) => node.classList.toggle("hidden", !!selected));
+  if (!selected) {
+    cards.forEach((card) => card.classList.add("hidden"));
+    return;
+  }
   const wanted = homeworkSubjectKey(selected);
-  document.querySelectorAll(".teacherHomeworkCard,.archivedHomeworkCard").forEach((card) => {
+  cards.forEach((card) => {
     const pill = card.querySelector(".subjectPill")?.textContent || "";
     card.classList.toggle("hidden", homeworkSubjectKey(pill) !== wanted);
   });
 }
 document.addEventListener("change", (event) => {
   if (state.role !== "teacher" || event.target?.tagName !== "SELECT") return;
-  const value = String(event.target.value || "").trim();
-  if (!["国語","数学","算数","英語","理科","社会"].includes(value)) return;
-  teacherHomeworkSubjectMemory = value;
+  if (!["lessonSubject","elementaryLessonSubject"].includes(event.target.id)) return;
+  rememberTeacherSubject(event.target.value, state.activeStudentId);
   queueMicrotask(applyTeacherHomeworkSubjectFilter);
 });
 const teacherHomeworkFilterObserver = new MutationObserver(() => queueMicrotask(applyTeacherHomeworkSubjectFilter));
@@ -800,17 +839,19 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   const next = data.nextTest;
   const summary = homeworkCompletionSummary(data.homework || []);
   const orderedSubjects = [...new Set([...(data.student.subjects || []), ...SUBJECTS])];
-  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow lessonControls"><select id="lessonSubject" class="field" aria-label="科目">${orderedSubjects.map((s) => `<option>${esc(s)}</option>`).join("")}</select><label class="teacherPicker"><span>担当講師</span><select id="lessonTeacher" class="field" aria-label="担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button id="inputLesson" class="primaryBtn">進行表を開く</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12 teacherNoticeCard"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6 teacherHomeworkPanel"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn homeworkArchiveOpen" type="button">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">5科目の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>国語</th><th>数学</th><th>英語</th><th>理科</th><th>社会</th><th>5科</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.jpn)}</td><td>${esc(s.math)}</td><td>${esc(s.eng)}</td><td>${esc(s.sci)}</td><td>${esc(s.soc)}</td><td>${esc(s.total5)}</td></tr>`).join("") || '<tr><td colspan="8">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
+  const savedLessonSubject = savedTeacherSubject(studentId, orderedSubjects);
+  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead"><div><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school || "学校未登録")}</p></div><a class="ghostBtn" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a></header><section class="cardGrid">${metricCard("次回テスト", next?.name || "次回テスト未登録", next ? `${fmtDate(next.startDate)}〜${fmtDate(next.endDate)} / あと${next.daysUntil}日` : "", next ? "" : "alert")}<article class="card span8"><p class="cardTitle">本日の授業</p><div class="actionRow lessonControls"><select id="lessonSubject" class="field" aria-label="科目"><option value="">科目を選択してください</option>${orderedSubjects.map((s) => `<option ${s === savedLessonSubject ? "selected" : ""}>${esc(s)}</option>`).join("")}</select><label class="teacherPicker"><span>担当講師</span><select id="lessonTeacher" class="field" aria-label="担当講師">${(data.teacherCandidates || []).map((t) => `<option value="${esc(t.loginId)}" ${String(t.loginId) === String(state.session.loginId) ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><button id="inputLesson" class="primaryBtn">進行表を開く</button></div><p class="muted">受講科目を先頭に表示します。進行表がない科目は「進行表未登録」です。</p></article><article class="card span12 teacherNoticeCard"><p class="cardTitle">指導上の注意事項</p><p class="noticeLine" id="noticeLine">${esc(data.note?.text || "注意事項は登録されていません。")}</p></article><article class="card span12"><p class="cardTitle">進度・必要ペース</p><div class="tableWrap"><table><thead><tr><th>科目</th><th>学校進度</th><th>フォレスタ進度</th><th>比較</th><th>残り</th><th>授業回数</th><th>必要ペース</th></tr></thead><tbody>${(data.progress || []).map((row) => `<tr><td>${esc(row.subject)}</td><td>${esc(row.schoolUnitName || "未設定")}</td><td>${esc(row.forestaUnitName || "未設定")}</td><td><span class="badge ${row.comparison === "学校より先" ? "good" : "warn"}">${esc(row.comparison)}</span></td><td>${row.remaining ?? "未設定"}</td><td>${row.remainingLessons ?? "未設定"}</td><td>${row.urgent ? "緊急" : row.requiredPerLesson == null ? "未設定" : `${row.requiredPerLesson}単元/回`}</td></tr>`).join("")}</tbody></table></div></article><article class="card span6 teacherHomeworkPanel"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn homeworkArchiveOpen" type="button">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div><p class="teacherHomeworkSubjectPrompt ${savedLessonSubject ? "hidden" : ""}">科目を選択すると、その科目の宿題だけを表示します。</p><div class="homeworkList">${homeworkHtml(data.homework || [], "teacher")}</div></article><article class="card span6"><p class="cardTitle">5科目の目標点</p>${Object.entries(data.targets || {}).filter(([s]) => TRACKED_SUBJECTS.includes(s)).map(([s, v]) => `<p><strong>${s}</strong> ${esc(v)}点</p>`).join("") || "未設定"}<p class="cardTitle" style="margin-top:20px">定期テスト履歴</p><div class="tableWrap"><table><thead><tr><th>年度</th><th>回</th><th>国語</th><th>数学</th><th>英語</th><th>理科</th><th>社会</th><th>5科</th></tr></thead><tbody>${(data.scores || []).map((s) => `<tr><td>${esc(s.year)}</td><td>${esc(s.term)}</td><td>${esc(s.jpn)}</td><td>${esc(s.math)}</td><td>${esc(s.eng)}</td><td>${esc(s.sci)}</td><td>${esc(s.soc)}</td><td>${esc(s.total5)}</td></tr>`).join("") || '<tr><td colspan="8">履歴なし</td></tr>'}</tbody></table></div><p class="cardTitle" style="margin-top:20px">講師コメント</p><textarea id="teacherComment" class="field" rows="3" placeholder="本日の指導コメント"></textarea><button id="saveComment" class="secondaryBtn" style="margin-top:8px">コメントを保存</button></article></section>`;
   const headerScoreCorrection = $("content").querySelector(`.pageHead a[href="${CONFIG.scoreCorrectionUrl}"]`);
   if (headerScoreCorrection) headerScoreCorrection.remove();
   const testHistoryTitle = [...$("content").querySelectorAll(".cardTitle")].find((item) => item.textContent.trim() === "定期テスト履歴");
   if (testHistoryTitle) testHistoryTitle.insertAdjacentHTML("beforeend", ` <a class="scoreCorrectionMini" href="${CONFIG.scoreCorrectionUrl}" target="_blank" rel="noopener">成績を訂正する ↗</a>`);
   $("inputLesson").insertAdjacentHTML("afterend", '<button id="correctLesson" class="ghostBtn compactCorrectionButton" type="button">宿題・進行表を訂正</button>');
   bindSelectedTabs();
-  const prefetchCurrentProgression = () => prefetchProgression({ subject: $("lessonSubject").value, mode: "lesson", studentId });
-  $("lessonSubject").onchange = prefetchCurrentProgression;
-  prefetchCurrentProgression();
-  $("inputLesson").onclick = () => openProgress({ subject: $("lessonSubject").value, mode: "lesson", studentId, teacherId: $("lessonTeacher").value });
+  const prefetchCurrentProgression = () => { const subject = $("lessonSubject").value; if (subject) prefetchProgression({ subject, mode: "lesson", studentId }); };
+  $("lessonSubject").onchange = () => { rememberTeacherSubject($("lessonSubject").value, studentId); prefetchCurrentProgression(); applyTeacherHomeworkSubjectFilter(); };
+  if ($("lessonSubject").value) { rememberTeacherSubject($("lessonSubject").value, studentId); prefetchCurrentProgression(); }
+  applyTeacherHomeworkSubjectFilter();
+  $("inputLesson").onclick = () => { const subject = $("lessonSubject").value; if (!subject) return status("科目を選択してください。", true); rememberTeacherSubject(subject, studentId); openProgress({ subject, mode: "lesson", studentId, teacherId: $("lessonTeacher").value }); };
   $("correctLesson").onclick = () => openLessonCorrection(studentId);
   $("noticeLine").onclick = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);
   $("saveComment").onclick = async () => { const text = $("teacherComment").value.trim(); if (!text) return; try { await api("saveComment", { studentId, subject: $("lessonSubject").value, text }); $("teacherComment").value = ""; status("コメントを保存しました。"); } catch (error) { status(error.message, true); } };
@@ -823,7 +864,28 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
 function elemOptions(r){return '<option value="">学校進度を選ぶ</option>'+(r.unitOptions||[]).map(u=>`<option value="${esc(u.unitId)}" ${u.unitId===r.schoolUnitId?"selected":""}>${esc([u.unitNumber,u.unitName].filter(Boolean).join(" "))}</option>`).join('')}
 function elementaryTopTestEntryHtml(rows){return `<article id="elementaryTopTestEntry" class="card elementaryTopTestEntry"><div><p class="cardTitle">学校の単元テスト入力</p><p class="muted">最近の算数・国語のテストを聞き取り、表面・裏面をまとめて入力します。</p></div><form id="elementaryTopTestForm" class="elementaryTopTestForm"><label>科目<select id="elementaryTopTestSubject" class="field">${rows.map(r=>`<option>${esc(r.subject)}</option>`).join('')}</select></label><label id="elementaryTopTestUnitWrap">大きな単元（章）<select id="elementaryTopTestUnit" class="field"></select></label><label id="elementaryTopTestFreeWrap" class="hidden">単元名<input id="elementaryTopTestFree" class="field" maxlength="80"></label><label class="elementaryFrontScore">表 点数<input id="elementaryTopTestScore" class="field" type="number" min="0" max="999" required></label><label class="elementaryFrontMax">表 満点<input id="elementaryTopTestMax" class="field" type="number" min="1" max="999" value="100"></label><label class="elementaryBackScore">裏 点数<input id="elementaryTopTestBackScore" class="field" type="number" min="0" max="999" required></label><label class="elementaryBackMax">裏 満点<input id="elementaryTopTestBackMax" class="field" type="number" min="1" max="999" value="50"></label><label class="elementaryTopTestDate">テスト日<input id="elementaryTopTestDate" class="field" type="date" value="${dateInputValue(new Date())}"></label><button class="primaryBtn" type="submit">保存</button></form><output id="elementaryTopTestStatus" class="lessonSaveStatus" aria-live="polite"></output></article>`}
 function bindElementaryTopTestEntry(data,studentId,rows){const form=$("elementaryTopTestForm");if(!form)return;const subject=$("elementaryTopTestSubject"),unit=$("elementaryTopTestUnit"),unitWrap=$("elementaryTopTestUnitWrap"),freeWrap=$("elementaryTopTestFreeWrap");const refresh=()=>{const row=rows.find(r=>r.subject===subject.value)||{},units=row.unitOptions||[];unit.innerHTML='<option value="">単元を選ぶ</option>'+units.map(u=>`<option value="${esc(u.unitId)}" ${u.unitId===row.schoolUnitId?"selected":""}>${esc([u.unitNumber,u.unitName].filter(Boolean).join(" "))}</option>`).join('');unitWrap.classList.toggle("hidden",!units.length);freeWrap.classList.toggle("hidden",!!units.length)};subject.onchange=refresh;refresh();form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type="submit"]'),hasUnits=!unitWrap.classList.contains("hidden");btn.disabled=true;$("elementaryTopTestStatus").textContent="保存しています…";try{await api("saveElementaryUnitTest",{studentId,subject:subject.value,unitId:hasUnits?unit.value:"",unitName:hasUnits?"":$("elementaryTopTestFree").value.trim(),testDate:$("elementaryTopTestDate").value,score:$("elementaryTopTestScore").value,maxScore:$("elementaryTopTestMax").value||100,memo:""},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;status("学校の単元テストを保存しました。");await renderTeacherStudent(studentId,{force:true})}catch(err){btn.disabled=false;$("elementaryTopTestStatus").textContent=err.message}}}
-function renderElementaryTeacherStudent(data,studentId){const rows=elementaryCoreRows(data), summary=homeworkCompletionSummary(data.homework||[]), teachers=(data.teacherCandidates||[]).map(t=>`<option value="${esc(t.loginId)}" ${String(t.loginId)===String(state.session.loginId)?"selected":""}>${esc(t.name)}</option>`).join('');$("content").innerHTML=`${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide"><strong>授業前に確認</strong><span>①学校はどこまで進んだか　②最近の学校単元テストは何点だったか　③次回のテストはいつありそうか？</span></article>${elementaryTopTestEntryHtml(rows)}<div class="elementaryTeacherToolbar"><label>担当講師<select id="elementaryLessonTeacher" class="field">${teachers}</select></label><button id="correctElementaryLesson" class="ghostBtn">宿題・進行表を訂正</button></div><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><label class="elementarySchoolSelect">学校の現在地<select class="field elementarySchoolPosition" data-subject="${esc(r.subject)}">${elemOptions(r)}</select><small>選ぶと自動保存</small></label><p><small>塾の現在地</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><div class="actionRow"><button class="secondaryBtn elementaryOpenProgress" data-subject="${esc(r.subject)}">進行表を開く</button><button class="ghostBtn elementaryTestEntry" data-subject="${esc(r.subject)}">単元テスト入力</button></div></article>`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">最近の学校単元テスト</p>${elementaryRecentTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework||[],"teacher")}</div></article></section>`;bindSelectedTabs();bindElementaryTopTestEntry(data,studentId,rows);$("content").querySelectorAll(".elementaryOpenProgress").forEach(b=>b.onclick=()=>openProgress({subject:b.dataset.subject,mode:"lesson",studentId,teacherId:$("elementaryLessonTeacher")?.value||state.session.loginId}));$("content").querySelectorAll(".elementarySchoolPosition").forEach(s=>s.onchange=async()=>{if(!s.value)return;s.disabled=true;try{await api("saveSchoolPosition",{studentId,subject:s.dataset.subject,unitId:s.value,recordedDate:dateInputValue(new Date())},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;status("学校進度を保存しました。");await renderTeacherStudent(studentId,{force:true})}catch(e){status(e.message,true);s.disabled=false}});$("content").querySelectorAll(".elementaryTestEntry").forEach(b=>b.onclick=()=>openElementaryUnitTestForm(data,studentId,b.dataset.subject));$("correctElementaryLesson")?.addEventListener("click",()=>openLessonCorrection(studentId));bindTeacherHomeworkChecks();bindHomeworkArchiveActions("teacher");$("openTeacherHomeworkArchive")?.addEventListener("click",()=>{state.activeView="selectedArchive";openView("selectedArchive")})}
+function renderElementaryTeacherStudent(data,studentId){
+  const rows=elementaryCoreRows(data), summary=homeworkCompletionSummary(data.homework||[]), teachers=(data.teacherCandidates||[]).map(t=>`<option value="${esc(t.loginId)}" ${String(t.loginId)===String(state.session.loginId)?"selected":""}>${esc(t.name)}</option>`).join('');
+  const lessonSubjects=rows.map(r=>r.subject);
+  const savedLessonSubject=savedTeacherSubject(studentId,lessonSubjects);
+  $("content").innerHTML=`${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide"><strong>授業前に確認</strong><span>①学校はどこまで進んだか　②最近の学校単元テストは何点だったか　③次回のテストはいつありそうか？</span></article>${elementaryTopTestEntryHtml(rows)}<div class="elementaryTeacherToolbar"><label>科目<select id="elementaryLessonSubject" class="field"><option value="">科目を選択してください</option>${lessonSubjects.map(s=>`<option ${s===savedLessonSubject?"selected":""}>${esc(s)}</option>`).join('')}</select></label><label>担当講師<select id="elementaryLessonTeacher" class="field">${teachers}</select></label><button id="correctElementaryLesson" class="ghostBtn">宿題・進行表を訂正</button></div><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}" data-lesson-subject="${esc(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><label class="elementarySchoolSelect">学校の現在地<select class="field elementarySchoolPosition" data-subject="${esc(r.subject)}">${elemOptions(r)}</select><small>選ぶと自動保存</small></label><p><small>塾の現在地</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><div class="actionRow"><button class="secondaryBtn elementaryOpenProgress" data-subject="${esc(r.subject)}">進行表を開く</button><button class="ghostBtn elementaryTestEntry" data-subject="${esc(r.subject)}">単元テスト入力</button></div></article>`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">最近の学校単元テスト</p>${elementaryRecentTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><p class="teacherHomeworkSubjectPrompt ${savedLessonSubject?"hidden":""}">科目を選択すると、その科目の宿題だけを表示します。</p><div class="homeworkList">${homeworkHtml(data.homework||[],"teacher")}</div></article></section>`;
+  bindSelectedTabs();
+  bindElementaryTopTestEntry(data,studentId,rows);
+  const lessonSubject=$("elementaryLessonSubject");
+  const applyLessonSubject=()=>{
+    const subject=lessonSubject?.value||"";
+    rememberTeacherSubject(subject,studentId);
+    $("content").querySelectorAll('.elementarySubjectCard').forEach(card=>card.classList.toggle('lessonSubjectSelected',!!subject&&card.dataset.lessonSubject===subject));
+    applyTeacherHomeworkSubjectFilter();
+  };
+  if(lessonSubject){ lessonSubject.onchange=applyLessonSubject; if(lessonSubject.value) rememberTeacherSubject(lessonSubject.value,studentId); }
+  applyLessonSubject();
+  $("content").querySelectorAll(".elementaryOpenProgress").forEach(b=>b.onclick=()=>{const subject=b.dataset.subject;if(lessonSubject)lessonSubject.value=subject;rememberTeacherSubject(subject,studentId);applyLessonSubject();openProgress({subject,mode:"lesson",studentId,teacherId:$("elementaryLessonTeacher")?.value||state.session.loginId})});
+  $("content").querySelectorAll(".elementarySchoolPosition").forEach(s=>s.onchange=async()=>{if(!s.value)return;s.disabled=true;try{await api("saveSchoolPosition",{studentId,subject:s.dataset.subject,unitId:s.value,recordedDate:dateInputValue(new Date())},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;status("学校進度を保存しました。");await renderTeacherStudent(studentId,{force:true})}catch(e){status(e.message,true);s.disabled=false}});
+  $("content").querySelectorAll(".elementaryTestEntry").forEach(b=>b.onclick=()=>openElementaryUnitTestForm(data,studentId,b.dataset.subject));
+  $("correctElementaryLesson")?.addEventListener("click",()=>openLessonCorrection(studentId));
+  bindTeacherHomeworkChecks();bindHomeworkArchiveActions("teacher");$("openTeacherHomeworkArchive")?.addEventListener("click",()=>{state.activeView="selectedArchive";openView("selectedArchive")});
+}
 function openElementaryUnitTestForm(data,studentId,preset,presetUnitId=""){const rows=elementaryCoreRows(data), subjects=rows.map(r=>r.subject);showModal(`<h2>学校の単元テスト入力</h2><form id="elementaryTestForm" class="elementaryTestForm"><label>科目<select id="elementaryTestSubject" class="field">${subjects.map(s=>`<option ${s===preset?"selected":""}>${esc(s)}</option>`).join('')}</select></label><label id="elementaryTestUnitWrap">単元<select id="elementaryTestUnit" class="field"></select></label><label id="elementaryTestUnitFreeWrap" class="hidden">単元名<input id="elementaryTestUnitFree" class="field" maxlength="80"></label><label>テスト日<input id="elementaryTestDate" class="field" type="date" value="${dateInputValue(new Date())}"></label><div class="elementaryScoreInputs"><label>点数<input id="elementaryTestScore" class="field" type="number" min="0" max="999" required></label><label>満点<input id="elementaryTestMax" class="field" type="number" min="1" max="999" value="100"></label></div><label>メモ<input id="elementaryTestMemo" class="field" maxlength="120"></label><output id="elementaryTestStatus"></output><button class="primaryBtn" type="submit">点数を保存</button></form>`);const refresh=()=>{const r=rows.find(x=>x.subject===$("elementaryTestSubject").value)||{}, units=r.unitOptions||[];$("elementaryTestUnit").innerHTML='<option value="">単元を選ぶ</option>'+units.map(u=>`<option value="${esc(u.unitId)}" ${(presetUnitId&&r.subject===preset&&u.unitId===presetUnitId)||(!presetUnitId&&u.unitId===r.schoolUnitId)?"selected":""}>${esc([u.unitNumber,u.unitName].filter(Boolean).join(" "))}</option>`).join('');$("elementaryTestUnitWrap").classList.toggle("hidden",!units.length);$("elementaryTestUnitFreeWrap").classList.toggle("hidden",!!units.length)};$("elementaryTestSubject").onchange=()=>{presetUnitId="";refresh()};refresh();$("elementaryTestForm").onsubmit=async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button[type="submit"]');btn.disabled=true;try{const units=!$("elementaryTestUnitWrap").classList.contains("hidden");await api("saveElementaryUnitTest",{studentId,subject:$("elementaryTestSubject").value,unitId:units?$("elementaryTestUnit").value:"",unitName:units?"":$("elementaryTestUnitFree").value.trim(),testDate:$("elementaryTestDate").value,score:$("elementaryTestScore").value,maxScore:$("elementaryTestMax").value||100,memo:$("elementaryTestMemo").value.trim()},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;$("modal").dataset.refreshTeacher="true";closeModal();status("学校の単元テストを保存しました。")}catch(err){btn.disabled=false;$("elementaryTestStatus").textContent=err.message}}}
 
 async function renderToday() {
