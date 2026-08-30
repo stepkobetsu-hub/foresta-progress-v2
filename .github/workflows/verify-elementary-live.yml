@@ -1,0 +1,43 @@
+name: Verify elementary live API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - verify-elementary-live-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Probe live Apps Script
+        shell: bash
+        run: |
+          API='https://script.google.com/macros/s/AKfycbz0z2FeM1jWUSs7LTzwi9N12kPoTmSTP_hRjTaf3wQlf5kX5hR_W9E37ON63L_dhbIZ/exec'
+          GET="$(curl -L -sS "$API" || true)"
+          HEALTH="$(curl -L -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"health"}' "$API" || true)"
+          ELEM="$(curl -L -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"saveElementaryUnitTest","studentId":"1001","subject":"算数","unitName":"VERIFY","score":100,"maxScore":100}' "$API" || true)"
+          SCHOOL="$(curl -L -sS -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"saveSchoolPosition","studentId":"1001","subject":"算数","unitId":"ELEM-MATH-5-001"}' "$API" || true)"
+          cat > LIVE_ELEMENTARY_VERIFY.txt <<EOF
+          checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          get=$GET
+          health=$HEALTH
+          saveElementaryUnitTest=$ELEM
+          saveSchoolPosition=$SCHOOL
+          EOF
+          cat LIVE_ELEMENTARY_VERIFY.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add LIVE_ELEMENTARY_VERIFY.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record live elementary API verification'
+            git push origin HEAD:main
+          fi
