@@ -297,6 +297,7 @@ function timetableMap_() {
   return map;
 }
 function subjectCacheMap_(){const map={};objects_('受講科目キャッシュ').forEach(function(row){const id=text_(row['生徒ID']);if(!id)return;if(!map[id])map[id]={subjects:[],englishLevel:text_(row['英語レベル']),mathLevel:text_(row['数学レベル'])};const subject=text_(row['受講科目']);if(subject&&map[id].subjects.indexOf(subject)<0)map[id].subjects.push(subject);if(!map[id].englishLevel)map[id].englishLevel=text_(row['英語レベル']);if(!map[id].mathLevel)map[id].mathLevel=text_(row['数学レベル']);});return map;}
+function studentCourseInfo_(studentId){const id=text_(studentId),live=timetableMap_()[id],cached=subjectCacheMap_()[id];if(live)return live;if(cached)return cached;return{subjects:[],englishLevel:'',mathLevel:''};}
 
 function searchStudents_(data) {
   requireRole_(data, ['teacher']);
@@ -476,7 +477,7 @@ function authorizeStudentAccess_(data) {
 }
 
 function getStudentDashboard_(data) {
-  const access = authorizeStudentAccess_(data), student = access.student, tt = subjectCacheMap_()[student.studentId] || { subjects: [], englishLevel: '', mathLevel: '' };
+  const access = authorizeStudentAccess_(data), student = access.student, tt = studentCourseInfo_(student.studentId);
   student.subjects = tt.subjects; student.englishLevel = tt.englishLevel; student.mathLevel = tt.mathLevel;
   const homework = homeworkFor_(student.studentId), note = latestNote_(student.studentId);
   if (isElementaryGrade_(student.grade)) {
@@ -512,7 +513,7 @@ function unitsFor_(student, subject) {
   const schoolKey = student.schoolKey || normalizeSchool_(student.school);
   const alternateSchool = ['志段味中', '吉根中'].indexOf(schoolKey) >= 0;
   let textbook = '標準版';
-  if(isElementaryGrade_(student.grade)){if(subject==='算数')textbook='啓林館';else if(subject==='国語')textbook='NEW小学ワーク光村';else if(subject==='英語'){const info=subjectCacheMap_()[student.studentId]||{},level=elementaryEnglishLevel_(info.englishLevel||student.englishLevel);textbook=level?'小学英語'+level:'';}else return{textbook:'',units:[]};}else
+  if(isElementaryGrade_(student.grade)){if(subject==='算数')textbook='啓林館';else if(subject==='国語')textbook='NEW小学ワーク光村';else if(subject==='英語'){const info=studentCourseInfo_(student.studentId),level=elementaryEnglishLevel_(info.englishLevel||student.englishLevel);textbook=level?'小学英語'+level:'';}else return{textbook:'',units:[]};}else
   if (subject === '英語') {
     const setting = objects_('学校別英語教科書設定').find(function(row) { return normalizeSchool_(row['学校名正規化キー']) === schoolKey; });
     textbook = setting ? text_(setting['教科書']) : '';
@@ -578,7 +579,7 @@ function roundHomeworkItems_(subject, roundNumber, unit) {
 }
 
 function progressionFor_(student, subject, includeUnits) {
-  const source = unitsFor_(student, subject), units = source.units, nextTest = nextTestFor_(student), tt = subjectCacheMap_()[student.studentId] || {}, level = subject === '英語' ? tt.englishLevel : subject === '数学' ? tt.mathLevel : '';
+  const source = unitsFor_(student, subject), units = source.units, nextTest = nextTestFor_(student), tt = studentCourseInfo_(student.studentId), level = subject === '英語' ? tt.englishLevel : subject === '数学' ? tt.mathLevel : '';
   const lessons = objects_('授業記録').filter(function(row) { return text_(row['生徒ID']) === student.studentId && text_(row['科目']) === subject; });
   const lessonUnits = objects_('授業実施単元').filter(function(row) { return text_(row['生徒ID']) === student.studentId && text_(row['科目']) === subject; });
   const dateMap = {}; lessonUnits.forEach(function(row) { const id = text_(row['単元ID']); if (!dateMap[id]) dateMap[id] = []; dateMap[id].push(new Date(row['実施日'])); });

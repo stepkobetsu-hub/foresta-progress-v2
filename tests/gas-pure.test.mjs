@@ -50,4 +50,7 @@ assert.equal(adminProgressAccess.student.studentId, "S001");
 context.requireAdmin_ = () => { throw new Error("FORBIDDEN"); };
 assert.throws(() => context.authorizeStudentAccess_({ token: "admin-token", adminToken: "invalid", studentId: "S001" }), /FORBIDDEN/);
 
-console.log("GAS pure tests: 30 assertions passed");
+assert.match(source, /function studentCourseInfo_\(studentId\)/);
+assert.match(source, /live=timetableMap_\(\)\[id\]/);
+assert.match(source, /tt = studentCourseInfo_\(student.studentId\)/);
+console.log("GAS pure tests: live timetable source assertions passed");
