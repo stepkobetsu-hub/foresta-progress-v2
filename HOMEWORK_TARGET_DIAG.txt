@@ -1,0 +1,152 @@
+function renderTeacherStudent(studentId, { force = false }
+
+===== NEXT =====
+
+function teacherHomeworkCardsHtml(items) {
+  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
+    const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const canArchive = homeworkGroupCanArchive(group);
+    const archiveButton = `<button class="homeworkArchiveX ${canArchive ? "" : "hidden"}" type="button" data-ids="${esc(homeworkGroupIds(group))}" title="この宿題をアーカイブ" aria-label="この宿題をアーカイブ">×</button>`;
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      if (selfStudy) {
+        return `<div class="studentHomeworkTask teacherSelfHomework ${item.studentChecked ? "confirmed" : ""}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong></span><span class="teacherHomeworkState">${item.studentChecked ? "✓ 生徒チェック済み・完了" : "生徒未完了"}</span></div>`;
+      }
+      return `<label class="studentHomeworkTask teacherAssignedTask ${item.teacherChecked ? "confirmed" : ""}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong><small class="teacherStudentState">生徒：${item.studentChecked ? "チェック済み" : "未チェック"}</small></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="teacherHomeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.teacherChecked ? "checked" : ""}><b>${item.teacherChecked ? "講師確認済み" : "講師チェック"}</b></span><small class="homeworkSaveState">${item.teacherChecked ? "完了" : "講師確認で完了"}</small></span></label>`;
+    }).join("");
+    return `<article class="studentHomeworkCard teacherHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}" data-homework-source="${esc(group.source)}">${archiveButton}<div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small><small class="homeworkCompletionRule">${selfStudy ? "自主学習：生徒チェックで完了" : "授業宿題：講師チェックで完了"}</small></div><div class="studentHomeworkTasks teacherHomeworkTasks">${tasks}</div></article>`;
+  }).join("");
+}
+
+===== NEXT =====
+
+function studentHomeworkCardsHtml(items) {
+  if (!items.length) return '<div class="emptyState">現在の宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
+    const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const canArchive = homeworkGroupCanArchive(group);
+    const archiveButton = `<button class="homeworkArchiveX ${canArchive ? "" : "hidden"}" type="button" data-ids="${esc(homeworkGroupIds(group))}" title="この宿題をアーカイブ" aria-label="この宿題をアーカイブ">×</button>`;
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      let saveText = "自動保存";
+      if (selfStudy) saveText = item.studentChecked ? "完了" : "自動保存";
+      else if (item.teacherChecked) saveText = "講師確認済み";
+      else if (item.studentChecked) saveText = "講師確認待ち";
+      const disableStudent = !selfStudy && item.teacherChecked;
+      return `<label class="studentHomeworkTask ${homeworkItemCompleted(item) ? "confirmed" : ""}" title="${esc(display.title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(display.title)}</strong></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="homeworkCheck" type="checkbox" data-id="${esc(item.homeworkId)}" ${item.studentChecked ? "checked" : ""} ${disableStudent ? "disabled" : ""}><b>${disableStudent ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${esc(saveText)}</small></span></label>`;
+    }).join("");
+    return `<article class="studentHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}" data-homework-source="${esc(group.source)}">${archiveButton}<div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>宿題 ${fmtShortDate(group.createdAt)}　期限 ${fmtShortDate(group.due)}</small><small class="homeworkCompletionRule">${selfStudy ? "生徒チェックで完了" : "講師チェックで完了"}</small></div><div class="studentHomeworkTasks">${tasks}</div></article>`;
+  }).join("");
+}
+
+===== NEXT =====
+
+function homeworkGroups(items) {
+  const groups = new Map();
+  (items || []).forEach((item) => {
+    const key = [item.lessonId || "", item.unitId || "", item.recommendedDueDate || "", item.source || "teacher"].join("|");
+    if (!groups.has(key)) groups.set(key, {
+      items: [],
+      subject: item.subject || "",
+      unitNumber: item.unitNumber || "",
+      unitName: item.unitName || "",
+      roundNumber: item.roundNumber || "",
+      createdAt: item.createdAt || "",
+      due: item.recommendedDueDate || "",
+      source: item.source || "teacher",
+      sourceLabel: item.sourceLabel || (item.source === "self" ? "自主学習" : "講師からの宿題"),
+    });
+    groups.get(key).items.push(item);
+  });
+  return [...groups.values()];
+}
+
+===== NEXT =====
+
+function homeworkGroupCanArchive(group) { return group.items.length > 0 && group.items.every((item) => item.canArchive === true || (!item.archived && homeworkItemCompleted(item))); }
+
+===== NEXT =====
+
+function homeworkGroupIds(group) { return group.items.map((item) => item.homeworkId).filter(Boolean).join(","); }
+
+===== NEXT =====
+
+function bindHomeworkArchiveActions(mode) {
+  $("content").querySelectorAll(".homeworkArchiveX").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    if (!ids.length || !confirm("この宿題をアーカイブしますか？")) return;
+    button.disabled = true;
+    try {
+      await api("archiveHomework", { homeworkIds: ids, studentId: mode === "teacher" ? state.activeStudentId : "" });
+      if (mode === "teacher" && state.activeStudentId) {
+        delete state.teacherStudentCache[String(state.activeStudentId)];
+        await renderTeacherStudent(state.activeStudentId, { force: true });
+      } else {
+        state.dashboard = null;
+        sessionStorage.removeItem(KEYS.dashboard);
+        await openView(state.activeView === "homework" ? "homework" : "home");
+      }
+    } catch (error) {
+      button.disabled = false;
+      status(error.message, true);
+    }
+  });
+}
+
+===== NEXT =====
+
+function homeworkArchiveCardsHtml(items, mode) {
+  if (!items.length) return '<div class="emptyState">アーカイブされた宿題はありません。</div>';
+  return homeworkGroups(items).map((group) => {
+    const subject = group.subject || "宿題";
+    const selfStudy = group.source === "self";
+    const tasks = group.items.map((item) => {
+      const display = homeworkDisplayInfo(item);
+      const statusText = selfStudy ? (item.studentChecked ? "生徒チェック済み" : "未完了") : (item.teacherChecked ? "講師確認済み" : "未完了");
+      return `<div class="archivedHomeworkTask"><strong>${esc(display.title)}</strong><small>${esc(statusText)}</small></div>`;
+    }).join("");
+    const ids = homeworkGroupIds(group);
+    return `<article class="studentHomeworkCard archivedHomeworkCard ${subjectProgressClass(subject)} ${homeworkSourceClass(group.source)}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(subject)}</span>${group.roundNumber ? `<span class="roundPill">${esc(group.roundNumber)}周目</span>` : ""}${homeworkSourcePill(group.source)}</div><strong>${esc([group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題")}</strong><small>期限 ${fmtShortDate(group.due)}</small></div><div class="archivedHomeworkBody"><div class="archivedHomeworkTasks">${tasks}</div><div class="archiveActions"><button class="restoreHomeworkGroup secondaryBtn" type="button" data-ids="${esc(ids)}">復元</button>${mode === "teacher" || (mode === "student" && group.source === "self") ? `<button class="deleteHomeworkGroup dangerOutlineBtn" type="button" data-ids="${esc(ids)}">完全削除</button>` : ""}</div></div></article>`;
+  }).join("");
+}
+
+===== NEXT =====
+
+function renderHomeworkArchivePage(mode = "student", studentId = "") {
+  const data = await api("getHomeworkArchive", studentId ? { studentId } : {}, { silent: true });
+  const isTeacher = mode === "teacher";
+  $("content").innerHTML = `${isTeacher ? selectedTabsHtml() : ""}<header class="pageHead"><div><h1>宿題アーカイブ</h1><p>${isTeacher ? `${esc(data.student?.name || "")}さん / ` : ""}完了した宿題を保管しています。</p></div><div class="actionRow"><button id="backFromHomeworkArchive" class="ghostBtn" type="button">← 宿題に戻る</button></div></header><div class="homeworkSourceLegend"><span class="self">自主学習で出た宿題</span><span class="teacher">講師から出た宿題</span></div>${!isTeacher ? '<p class="archiveNote">自主学習で出た宿題は自分で完全削除できます。講師から出た宿題の完全削除は講師画面から行います。</p>' : ""}<div class="homeworkList archiveHomeworkList">${homeworkArchiveCardsHtml(data.homework || [], mode)}</div>`;
+  if (isTeacher) bindSelectedTabs();
+  $("backFromHomeworkArchive").onclick = () => {
+    if (isTeacher) { state.activeView = "selected"; openView("selected"); }
+    else openView("homework");
+  };
+  bindHomeworkArchivePageActions(mode, studentId || data.student?.studentId || "");
+}
+
+===== NEXT =====
+
+function bindHomeworkArchivePageActions(mode, studentId) {
+  $("content").querySelectorAll(".restoreHomeworkGroup").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    button.disabled = true;
+    try {
+      await api("restoreHomework", { homeworkIds: ids, studentId: mode === "teacher" ? studentId : "" });
+      if (mode === "teacher") delete state.teacherStudentCache[String(studentId)];
+      await renderHomeworkArchivePage(mode, studentId);
+    } catch (error) { button.disabled = false; status(error.message, true); }
+  });
+  $("content").querySelectorAll(".deleteHomeworkGroup").forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    if (!confirm("この宿題を完全に削除します。元に戻せません。よろしいですか？")) return;
+    button.disabled = true;
+    try {
+      await api("deleteHomework", { homeworkIds: ids, studentId });
+      delete state.teacherStudentCache[String(studentId)];
+      await renderHomeworkArchivePage(mode, studentId);
+    } catch (error) { button.disabled = false; status(error.message, true); }
+  });
+}
