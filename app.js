@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=20260831-timeout-1";
+import { CONFIG } from "./config.js?v=20260831-fastv3-1";
 import { SUBJECTS, TRACKED_SUBJECTS, formatProgressGroupLabel, formatProgressUnitNumber, homeworkSummary, progressGroupKey } from "./domain.js";
 
 const $ = (id) => document.getElementById(id);
