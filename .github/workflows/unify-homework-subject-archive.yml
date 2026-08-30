@@ -1,0 +1,29 @@
+name: Unify homework subject archive
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/unify-homework-subject-archive.py
+      - .github/workflows/unify-homework-subject-archive.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: python scripts/unify-homework-subject-archive.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - name: Commit unified homework changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js elementary-supabase.js elementary-supabase.css index.html
+          git commit -m "Unify homework subject filtering sorting and archive" || exit 0
+          git push origin HEAD:main
