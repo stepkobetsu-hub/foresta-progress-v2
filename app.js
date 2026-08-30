@@ -227,6 +227,40 @@ function navItems() {
   return [["admin", "本日の速報"], ["ranges", "進行表・テスト範囲設定"], ["training", "特訓部屋"], ["students", "全生徒"]];
 }
 
+
+let teacherHomeworkSubjectMemory = "";
+function homeworkSubjectKey(value) {
+  const s = String(value || "").trim();
+  return s === "数学" || s === "算数" ? "MATH" : s;
+}
+function currentTeacherHomeworkSubject() {
+  if (state.role !== "teacher") return "";
+  const subjectValues = new Set(["国語","数学","算数","英語","理科","社会"]);
+  const selects = [...document.querySelectorAll("select")].filter((select) => subjectValues.has(String(select.value || "").trim()));
+  const preferred = selects.find((select) => /subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || selects[0];
+  if (preferred?.value) teacherHomeworkSubjectMemory = String(preferred.value).trim();
+  return teacherHomeworkSubjectMemory;
+}
+function applyTeacherHomeworkSubjectFilter() {
+  if (state.role !== "teacher") return;
+  const selected = currentTeacherHomeworkSubject();
+  if (!selected) return;
+  const wanted = homeworkSubjectKey(selected);
+  document.querySelectorAll(".teacherHomeworkCard,.archivedHomeworkCard").forEach((card) => {
+    const pill = card.querySelector(".subjectPill")?.textContent || "";
+    card.classList.toggle("hidden", homeworkSubjectKey(pill) !== wanted);
+  });
+}
+document.addEventListener("change", (event) => {
+  if (state.role !== "teacher" || event.target?.tagName !== "SELECT") return;
+  const value = String(event.target.value || "").trim();
+  if (!["国語","数学","算数","英語","理科","社会"].includes(value)) return;
+  teacherHomeworkSubjectMemory = value;
+  queueMicrotask(applyTeacherHomeworkSubjectFilter);
+});
+const teacherHomeworkFilterObserver = new MutationObserver(() => queueMicrotask(applyTeacherHomeworkSubjectFilter));
+teacherHomeworkFilterObserver.observe(document.documentElement, { childList: true, subtree: true });
+
 function renderShell() {
   // Share the actual in-memory login with the elementary enhancement module.
   // This is the source of truth; stored sessions may contain an older student login.
@@ -429,7 +463,11 @@ function homeworkGroups(items) {
     });
     groups.get(key).items.push(item);
   });
-  return [...groups.values()];
+  return [...groups.values()].sort((a, b) => {
+    const ac = new Date(a.createdAt || a.due || 0).getTime() || 0;
+    const bc = new Date(b.createdAt || b.due || 0).getTime() || 0;
+    return bc - ac;
+  });
 }
 
 function homeworkItemCompleted(item) {

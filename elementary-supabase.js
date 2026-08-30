@@ -245,7 +245,13 @@ function elementaryTeacherChecked(row) { return String(row?.teacher_status || ""
 
 function elementaryHomeworkGroups(rows, unitMap) {
   const groups = new Map();
-  for (const row of rows) {
+  const sorted = [...(rows || [])].sort((a, b) => {
+    const ad = String(a.assigned_date || "");
+    const bd = String(b.assigned_date || "");
+    if (ad !== bd) return bd.localeCompare(ad);
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  });
+  for (const row of sorted) {
     const subject = String(row.series || "").replace(/^ELEMENTARY:/, "");
     const custom = String(row.homework_type || "") === "OTHER";
     const meta = unitMap.get(row.unit_id) || {};
@@ -256,16 +262,20 @@ function elementaryHomeworkGroups(rows, unitMap) {
       unitName: custom ? "その他の宿題" : (meta.unitName || row.unit_id || "宿題"),
       assignedDate: row.assigned_date || "",
       dueDate: row.due_date || "",
+      createdAt: row.created_at || "",
       items: [],
     });
     groups.get(key).items.push(row);
   }
-  return [...groups.values()];
+  return [...groups.values()].sort((a,b) => String(b.assignedDate || b.createdAt || "").localeCompare(String(a.assignedDate || a.createdAt || "")) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
 function elementaryHomeworkCards(groups, teacherMode) {
   if (!groups.length) return '<div class="emptyState">現在の宿題はありません。</div>';
   return groups.map((group) => {
+    const complete = group.items.length > 0 && group.items.every((row) => elementaryTeacherChecked(row));
+    const ids = group.items.map((row) => row.homework_id).filter(Boolean).join(",");
+    const archiveButton = `<button class="homeworkArchiveX elementaryHomeworkArchiveX ${complete ? "" : "hidden"}" type="button" data-ids="${esc(ids)}" title="この宿題をアーカイブ" aria-label="この宿題をアーカイブ">×</button>`;
     const tasks = group.items.map((row) => {
       const title = elementaryHomeworkTypeLabel(row);
       const studentChecked = elementaryStudentChecked(row);
@@ -280,7 +290,7 @@ function elementaryHomeworkCards(groups, teacherMode) {
       return `<label class="studentHomeworkTask ${teacherChecked ? "confirmed" : ""}" title="${esc(title)}"><span class="studentHomeworkTaskLabel"><strong>${esc(title)}</strong></span><span class="studentTaskRight"><span class="studentTaskAction"><input class="elementaryStudentHomeworkCheck" type="checkbox" data-id="${esc(row.homework_id)}" ${studentChecked ? "checked" : ""} ${disabled ? "disabled" : ""}><b>${disabled ? "確認済み" : "チェック"}</b></span><small class="homeworkSaveState">${esc(saveText)}</small></span></label>`;
     }).join("");
     const unit = [group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題";
-    return `<article class="studentHomeworkCard ${teacherMode ? "teacherHomeworkCard" : ""} ${group.subject === "算数" ? "math" : group.subject === "国語" ? "japanese" : group.subject === "英語" ? "english" : "other"}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(group.subject || "宿題")}</span><span class="roundPill">授業宿題</span></div><strong>${esc(unit)}</strong><small>宿題 ${esc(shortDate(group.assignedDate))}　期限 ${esc(shortDate(group.dueDate))}</small><small class="homeworkCompletionRule">講師からの宿題：講師チェックで完了</small></div><div class="studentHomeworkTasks ${teacherMode ? "teacherHomeworkTasks" : ""}">${tasks}</div></article>`;
+    return `<article class="studentHomeworkCard ${teacherMode ? "teacherHomeworkCard" : ""} ${group.subject === "算数" ? "math" : group.subject === "国語" ? "japanese" : group.subject === "英語" ? "english" : "other"}">${archiveButton}<div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(group.subject || "宿題")}</span><span class="roundPill">授業宿題</span></div><strong>${esc(unit)}</strong><small>宿題 ${esc(shortDate(group.assignedDate))}　期限 ${esc(shortDate(group.dueDate))}</small><small class="homeworkCompletionRule">講師からの宿題：講師チェックで完了</small></div><div class="studentHomeworkTasks ${teacherMode ? "teacherHomeworkTasks" : ""}">${tasks}</div></article>`;
   }).join("");
 }
 
@@ -352,35 +362,78 @@ function ensureElementaryCustomHomeworkForm(dashboard) {
   };
 }
 
-async function replaceElementaryHomework(dashboard, data) {
-  const lists = [...document.querySelectorAll('.homeworkList')];
-  if (!lists.length) return;
-  const rows = (data?.homework || []).filter((r) => String(r.series || '').startsWith('ELEMENTARY:'));
-  const unitMap = await elementaryHomeworkUnitMap(dashboard);
-  const groups = elementaryHomeworkGroups(rows, unitMap);
-  const teacherMode = isTeacherContext(readSession());
-  const html = elementaryHomeworkCards(groups, teacherMode);
-  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status, r.confirmation_memo].join('|')).join(';') || 'empty';
-  lists.forEach((list) => {
-    if (list.dataset.elementaryHomeworkSignature !== signature || list.dataset.elementaryHomeworkMode !== String(teacherMode)) {
-      list.dataset.elementaryHomeworkSignature = signature;
-      list.dataset.elementaryHomeworkMode = String(teacherMode);
-      list.innerHTML = html;
-    }
+
+function currentElementaryTeacherHomeworkSubject() {
+  if (!isTeacherContext(readSession())) return "";
+  const values = new Set(["算数","数学","国語","英語","理科","社会"]);
+  const selects = [...document.querySelectorAll("select")].filter((select) => values.has(String(select.value || "").trim()));
+  const preferred = selects.find((select) => /subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || selects[0];
+  return normalizeSubject(preferred?.value || "");
+}
+function elementaryArchiveCards(groups) {
+  if (!groups.length) return '<div class="emptyState">アーカイブされた宿題はありません。</div>';
+  return groups.map((group) => {
+    const ids = group.items.map((row) => row.homework_id).filter(Boolean).join(",");
+    const tasks = group.items.map((row) => `<div class="archivedHomeworkTask"><strong>${esc(elementaryHomeworkTypeLabel(row))}</strong><small>${elementaryTeacherChecked(row) ? "講師確認済み" : "未完了"}</small></div>`).join("");
+    const unit = [group.unitNumber, group.unitName].filter(Boolean).join(" ") || "宿題";
+    return `<article class="studentHomeworkCard archivedHomeworkCard ${group.subject === "算数" ? "math" : group.subject === "国語" ? "japanese" : group.subject === "英語" ? "english" : "other"}"><div class="studentHomeworkMeta"><div><span class="subjectPill">${esc(group.subject || "宿題")}</span></div><strong>${esc(unit)}</strong><small>宿題 ${esc(shortDate(group.assignedDate))}　期限 ${esc(shortDate(group.dueDate))}</small></div><div class="archivedHomeworkBody"><div class="archivedHomeworkTasks">${tasks}</div><div class="archiveActions"><button class="elementaryRestoreHomeworkGroup secondaryBtn" type="button" data-ids="${esc(ids)}">再表示</button></div></div></article>`;
+  }).join("");
+}
+async function showElementaryHomeworkArchive(dashboard) {
+  try {
+    const data = await callElementary("getHomeworkArchive");
+    const unitMap = await elementaryHomeworkUnitMap(dashboard);
+    let rows = data?.homework || [];
+    const selectedSubject = currentElementaryTeacherHomeworkSubject();
+    if (selectedSubject) rows = rows.filter((row) => normalizeSubject(String(row.series || "").replace(/^ELEMENTARY:/, "")) === selectedSubject);
+    const groups = elementaryHomeworkGroups(rows, unitMap);
+    openModal(`<h2>宿題アーカイブ</h2><p>${selectedSubject ? `${esc(selectedSubject)}の` : ""}完了した宿題を保管しています。再表示すると通常の宿題一覧へ戻ります。</p><div class="homeworkList archiveHomeworkList">${elementaryArchiveCards(groups)}</div>`);
+    document.querySelectorAll('.elementaryRestoreHomeworkGroup').forEach((button) => button.onclick = async () => {
+      const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+      button.disabled = true;
+      try {
+        await callElementary("restoreHomework", { homeworkIds: ids });
+        await loadElementaryData(true);
+        await showElementaryHomeworkArchive(dashboard);
+      } catch (error) { button.disabled = false; status(error.message, true); }
+    });
+  } catch (error) { status(error.message, true); }
+}
+function bindElementaryArchiveActions(dashboard) {
+  document.querySelectorAll('.elementaryHomeworkArchiveX').forEach((button) => button.onclick = async () => {
+    const ids = String(button.dataset.ids || "").split(",").filter(Boolean);
+    if (!ids.length || !confirm("この宿題をアーカイブしますか？")) return;
+    button.disabled = true;
+    try {
+      const result = await callElementary("archiveHomework", { homeworkIds: ids });
+      result.studentId = String(pageStudentId() || "");
+      elementaryDataCache.set(result.studentId, result);
+      lastElementaryData = result;
+      await replaceElementaryHomework(dashboard, result);
+      status("宿題をアーカイブしました。");
+    } catch (error) { button.disabled = false; status(error.message, true); }
   });
-  const completed = rows.filter(elementaryTeacherChecked).length;
-  if (teacherMode) {
-    const list = lists[0];
-    const card = list?.closest('.card');
-    const summary = card?.querySelector('p.muted');
-    if (summary && /完了/.test(summary.textContent)) summary.textContent = `完了 ${completed}/${rows.length}`;
-    ensureElementaryCustomHomeworkForm(dashboard);
-  } else if (document.querySelector('.pageHead h1')?.textContent.includes('次回までの宿題')) {
-    const values = [...document.querySelectorAll('.bigValue')];
-    if (values[0]) values[0].textContent = `${completed}/${rows.length}`;
-    if (values[1]) values[1].textContent = `${rows.length - completed}/${rows.length}`;
-  }
+  const archiveButtons = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'アーカイブ' && (button.closest('.card')?.querySelector('.homeworkList') || /^open.*HomeworkArchive/i.test(button.id || '')));
+  archiveButtons.forEach((button) => { button.onclick = (event) => { event.preventDefault(); showElementaryHomeworkArchive(dashboard); }; });
+}
+
+async function replaceElementaryHomework(dashboard, data) {
+  const lists = [...document.querySelectorAll(".homeworkList")];
+  if (!lists.length) return;
+  const rows = (data?.homework || []).filter((r) => String(r.series || "").startsWith("ELEMENTARY:"));
+  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status, r.archived_at].join("|")).join(";") || "empty";
+  const unitMap = await elementaryHomeworkUnitMap(dashboard);
+  const teacherMode = isTeacherContext(readSession());
+  const groups = elementaryHomeworkGroups(rows, unitMap);
+  const html = elementaryHomeworkCards(groups, teacherMode);
+  lists.forEach((list) => {
+    if (list.dataset.elementaryHomeworkSignature === signature) return;
+    list.dataset.elementaryHomeworkSignature = signature;
+    list.innerHTML = html;
+  });
   await bindElementaryHomeworkChecks(dashboard);
+  bindElementaryArchiveActions(dashboard);
+  ensureElementaryCustomHomeworkForm(dashboard);
 }
 
 let homeworkOnlyEnhancing = false;

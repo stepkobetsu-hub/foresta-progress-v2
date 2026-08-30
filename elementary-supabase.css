@@ -46,3 +46,7 @@
 .elementaryProgressActions .primaryBtn{padding:9px 14px}
 .elementaryHomeworkConfirmGroup .compactHomeworkGrid{margin:10px 0}
 .elementaryHomeworkConfirmGroup .elementaryOtherHomework{width:100%;margin-top:8px}
+
+/* Unified homework archive behaviour for elementary school. */
+.elementaryHomeworkArchiveX{z-index:3}
+.archiveHomeworkList .archivedHomeworkCard{position:relative}
