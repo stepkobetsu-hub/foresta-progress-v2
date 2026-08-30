@@ -1,0 +1,20 @@
+name: Smoke elementary 1001
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/smoke-elementary-1001.yml
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Test 1001 / kase through live APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(curl -fsSL 'https://wisedgcgwaebtkprdhth.supabase.co/functions/v1/elementary-smoke-test')"
+          echo "$RESULT"
+          python -c 'import json,sys; d=json.loads(sys.argv[1]); assert d.get("ok") is True, d' "$RESULT"
