@@ -179,14 +179,23 @@ function setDifferenceBadge(el, value, label) {
   el.classList.add(value == null ? "unset" : value > 0 ? "ahead" : value < 0 ? "behind" : "same");
 }
 
+
+function testScoreText(test) {
+  if (!test) return "未登録";
+  const front = `表 ${test.score ?? "-"}/${test.max_score || 100}`;
+  const hasBack = test.back_score !== null && test.back_score !== undefined && String(test.back_score) !== "";
+  const back = hasBack ? `裏 ${test.back_score}/${test.back_max_score || 50}` : "裏 未入力";
+  return `${front}・${back}`;
+}
+
 function recentTestsHtml(tests) {
   const subjectList = (subject) => {
     const rows = (tests || []).filter((t) => normalizeSubject(t.subject) === subject).slice(0, 6);
     if (!rows.length) return '<div class="emptyState compact">まだありません。</div>';
-    return `<div class="elementarySubjectTestList">${rows.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(t.score)}/${esc(t.max_score || 100)}</b></div>`).join("")}</div>`;
+    return `<div class="elementarySubjectTestList">${rows.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(testScoreText(t))}</b></div>`).join("")}</div>`;
   };
   const eng = (tests || []).filter((t) => normalizeSubject(t.subject) === "英語").slice(0, 4);
-  return `<div class="elementaryRecentTestGrid"><section><h3>算数</h3>${subjectList("算数")}</section><section><h3>国語</h3>${subjectList("国語")}</section></div>${eng.length ? `<details class="elementaryOtherTests"><summary>英語の履歴</summary><div class="elementarySubjectTestList">${eng.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(t.score)}/${esc(t.max_score || 100)}</b></div>`).join("")}</div></details>` : ""}`;
+  return `<div class="elementaryRecentTestGrid"><section><h3>算数</h3>${subjectList("算数")}</section><section><h3>国語</h3>${subjectList("国語")}</section></div>${eng.length ? `<details class="elementaryOtherTests"><summary>英語の履歴</summary><div class="elementarySubjectTestList">${eng.map((t) => `<div class="elementarySubjectTestRow"><span>${esc(shortDate(t.test_date))}</span><strong>${esc(t.unit_name || "単元テスト")}</strong><b>${esc(testScoreText(t))}</b></div>`).join("")}</div></details>` : ""}`;
 }
 
 function replaceRecentHistory(data) {
@@ -216,7 +225,7 @@ async function updateTopCards(dashboard, data) {
     const testP = paragraphs.find((p) => p.textContent.includes("直近"));
     if (schoolP) schoolP.innerHTML = `<small>学校</small><br><strong>${esc(summary.schoolUnit?.unitName || "未入力")}</strong>`;
     if (jukuP) jukuP.innerHTML = `<small>塾</small><br><strong>${esc(summary.jukuUnit?.unitName || "未入力")}</strong>`;
-    if (testP) testP.innerHTML = `直近の学校単元テスト：${summary.test ? `<strong class="elementaryScore">${esc(summary.test.score)}点</strong>` : "未登録"}`;
+    if (testP) testP.innerHTML = `直近の学校単元テスト：${summary.test ? `<strong class="elementaryScore">${esc(testScoreText(summary.test))}</strong>` : "未登録"}`;
 
     const select = card.querySelector(".elementarySchoolPosition");
     if (select && units.length) {
@@ -278,8 +287,10 @@ async function bindTopTestForm(dashboard) {
   const dateEl = form.querySelector("#elementaryTopTestDate");
   const scoreEl = form.querySelector("#elementaryTopTestScore");
   const maxEl = form.querySelector("#elementaryTopTestMax");
+  const backScoreEl = form.querySelector("#elementaryTopTestBackScore");
+  const backMaxEl = form.querySelector("#elementaryTopTestBackMax");
   const output = document.getElementById("elementaryTopTestStatus");
-  if (!subjectEl || !dateEl || !scoreEl || !maxEl) return;
+  if (!subjectEl || !dateEl || !scoreEl || !maxEl || !backScoreEl || !backMaxEl) return;
   subjectEl.innerHTML = subjects.map((subject) => `<option>${esc(subject)}</option>`).join("");
   if (!dateEl.value) dateEl.value = todayJst();
   let groups = [];
@@ -289,8 +300,6 @@ async function bindTopTestForm(dashboard) {
     if (unitEl) unitEl.innerHTML = chapterSelectOptions(groups);
     unitWrap?.classList.toggle("hidden", !groups.length);
     freeWrap?.classList.toggle("hidden", !!groups.length);
-    const unitLabel = unitWrap?.querySelector('label') || unitWrap;
-    if (unitLabel && unitWrap) unitWrap.childNodes[0] && (unitWrap.childNodes[0].textContent = '大きな単元（章）');
   };
   subjectEl.onchange = refresh;
   await refresh();
@@ -302,6 +311,7 @@ async function bindTopTestForm(dashboard) {
     const selected = hasGroups ? groups.find((g) => g.unitId === unitEl?.value) : null;
     const unitName = selected?.unitName || form.querySelector("#elementaryTopTestFree")?.value.trim() || "";
     if (!unitName) { if (output) output.textContent = "大きな単元（章）を選んでください。"; return; }
+    if (scoreEl.value === "" || backScoreEl.value === "") { if (output) output.textContent = "表面と裏面の点数を入力してください。"; return; }
     button.disabled = true;
     if (output) output.textContent = "保存しています…";
     try {
@@ -312,11 +322,14 @@ async function bindTopTestForm(dashboard) {
         testDate: dateEl.value || todayJst(),
         score: scoreEl.value,
         maxScore: maxEl.value || 100,
+        backScore: backScoreEl.value,
+        backMaxScore: backMaxEl.value || 50,
         memo: "",
       });
       if (output) output.textContent = "保存しました。";
       scoreEl.value = "";
-      status("学校の単元テストを保存しました。");
+      backScoreEl.value = "";
+      status("学校の単元テスト（表・裏）を保存しました。");
       await refreshElementaryScreen();
     } catch (error) {
       if (output) output.textContent = error.message;
@@ -335,21 +348,37 @@ function openModal(html) {
 function openTestDialog({ subject, unit, onSaved }) {
   const dialog = document.createElement("dialog");
   dialog.className = "elementaryUnitTestDialog";
-  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard"><button class="elementaryDialogClose" value="cancel" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryScoreInputs"><label>点数<input id="eTestScore" class="field" type="number" min="0" max="999" required autofocus></label><label>満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><button id="eTestSave" class="primaryBtn" type="button">保存</button></form>`;
+  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard" novalidate><button type="button" class="elementaryDialogClose" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryFaceScores"><fieldset><legend>表面</legend><div class="elementaryScoreInputs"><label>点数<input id="eTestScore" class="field" type="number" min="0" max="999" autofocus></label><label>満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div></fieldset><fieldset><legend>裏面</legend><div class="elementaryScoreInputs"><label>点数<input id="eTestBackScore" class="field" type="number" min="0" max="999"></label><label>満点<input id="eTestBackMax" class="field" type="number" min="1" max="999" value="50"></label></div></fieldset></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><div class="elementaryDialogActions"><button type="button" class="ghostBtn elementaryDialogCancel">キャンセル</button><button id="eTestSave" class="primaryBtn" type="button">保存</button></div></form>`;
   document.body.appendChild(dialog);
+  const close = () => { if (dialog.open) dialog.close(); };
+  dialog.querySelector(".elementaryDialogClose").onclick = close;
+  dialog.querySelector(".elementaryDialogCancel").onclick = close;
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("#eTestSave").onclick = async () => {
     const save = dialog.querySelector("#eTestSave");
     const out = dialog.querySelector("#eTestStatus");
     const score = dialog.querySelector("#eTestScore").value;
-    if (score === "") { out.textContent = "点数を入力してください。"; return; }
+    const backScore = dialog.querySelector("#eTestBackScore").value;
+    if (score === "" || backScore === "") { out.textContent = "表面と裏面の点数を入力してください。"; return; }
     save.disabled = true;
     out.textContent = "保存しています…";
     try {
-      await callElementary("saveUnitTest", { subject, unitId: unit?.unitId || "", unitName: unit?.unitName || "単元テスト", testDate: dialog.querySelector("#eTestDate").value || todayJst(), score, maxScore: dialog.querySelector("#eTestMax").value || 100, memo: dialog.querySelector("#eTestMemo").value.trim() });
+      await callElementary("saveUnitTest", {
+        subject,
+        unitId: unit?.unitId || "",
+        unitName: unit?.unitName || "単元テスト",
+        testDate: dialog.querySelector("#eTestDate").value || todayJst(),
+        score,
+        maxScore: dialog.querySelector("#eTestMax").value || 100,
+        backScore,
+        backMaxScore: dialog.querySelector("#eTestBackMax").value || 50,
+        memo: dialog.querySelector("#eTestMemo").value.trim(),
+      });
       out.textContent = "保存しました。";
-      status("学校の単元テストを保存しました。");
-      setTimeout(() => { try { dialog.close(); } catch {} onSaved?.(); }, 250);
+      status("学校の単元テスト（表・裏）を保存しました。");
+      setTimeout(() => { close(); onSaved?.(); }, 200);
     } catch (error) {
       out.textContent = error.message;
       save.disabled = false;
@@ -390,7 +419,7 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
     let tableRows = "";
     for (const group of groups) {
       const groupTest = testMap.get(group.unitId);
-      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>第${esc(group.key)}章</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(groupTest.score)}点` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(groupTest.score)}点` : ""}</td>`}</tr>`;
+      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>第${esc(group.key)}章</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : ""}</td>`}</tr>`;
       for (const u of group.units) {
         const dates = (lessonDates.get(u.unitId) || []).sort().reverse();
         const learned = dates.length > 0;
