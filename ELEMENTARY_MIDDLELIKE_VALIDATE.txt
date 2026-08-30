@@ -1,5 +1,0 @@
-Validated by GitHub Actions on 2026-08-31 JST.
-- node --check app.js: passed
-- node --check elementary-enhancement.js: passed
-- node --check apps-script/Code.gs: passed
-- npm test: passed
