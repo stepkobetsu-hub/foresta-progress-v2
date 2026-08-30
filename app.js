@@ -28,7 +28,7 @@ const state = {
   progressionPromises: new Map(),
 };
 
-const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache" };
+const KEYS = { local: "forestaProgressAuth", session: "forestaProgressSession", admin: "forestaProgressAdmin", device: "forestaDeviceMode", dashboard: "forestaProgressDashboardCache", teacherSelection: "forestaTeacherLessonSelection" };
 const DEFAULT_HOMEWORK = {
   数学: ["TRYの赤×直し", "exercise", "宿題の赤×直し"],
   英語: ["KeyWords「☆日→英」暗記", "exercise「暗記マーク」暗記", "Try赤×直し", "exercise", "宿題の赤×直し"],
@@ -155,6 +155,44 @@ function persistAdminSession() {
   localStorage.setItem(KEYS.admin, JSON.stringify({ session: state.session, adminToken: state.adminToken }));
 }
 
+function persistTeacherLessonSelection() {
+  if (state.role !== "teacher" || !state.session) return;
+  const payload = {
+    teacherLoginId: String(state.session.loginId || ""),
+    selectedStudents: state.selectedStudents.slice(0, 2),
+    activeStudentId: String(state.activeStudentId || ""),
+  };
+  localStorage.setItem(KEYS.teacherSelection, JSON.stringify(payload));
+}
+
+function restoreTeacherLessonSelection() {
+  if (state.role !== "teacher" || !state.session) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEYS.teacherSelection) || "null");
+    if (!saved || String(saved.teacherLoginId || "") !== String(state.session.loginId || "")) return;
+    const rows = Array.isArray(saved.selectedStudents)
+      ? saved.selectedStudents.filter((student) => student && student.studentId).slice(0, 2)
+      : [];
+    state.selectedStudents = rows;
+    const requested = String(saved.activeStudentId || "");
+    state.activeStudentId = rows.some((student) => String(student.studentId) === requested)
+      ? requested
+      : (rows[0] ? String(rows[0].studentId) : "");
+    if (state.activeStudentId) state.activeView = "selected";
+  } catch (_) {}
+}
+
+function endTeacherLesson() {
+  localStorage.removeItem(KEYS.teacherSelection);
+  state.selectedStudents = [];
+  state.activeStudentId = "";
+  state.teacherStudentCache = {};
+  state.dashboard = null;
+  window.__FORESTA_ACTIVE_DASHBOARD__ = null;
+  state.activeView = "search";
+  openView("search");
+}
+
 function navItems() {
   if (state.role === "student" && isElementaryGradeValue(state.session?.grade)) return [["home","今日の進捗"],["homework","宿題"]];
   if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];
@@ -168,6 +206,21 @@ function renderShell() {
   window.__FORESTA_ACTIVE_SESSION__ = state.session || null;
   window.__FORESTA_ACTIVE_ROLE__ = state.role || "";
   $("topAdminEntry")?.classList.remove("hidden");
+  const modeIndicator = $("modeIndicator");
+  if (modeIndicator) {
+    modeIndicator.classList.remove("hidden");
+    modeIndicator.querySelectorAll("[data-mode]").forEach((item) => {
+      item.classList.toggle("active", item.dataset.mode === state.role);
+    });
+  }
+  const lessonEndButton = $("lessonEndButton");
+  if (lessonEndButton) {
+    lessonEndButton.classList.toggle("hidden", state.role !== "teacher");
+    lessonEndButton.onclick = state.role === "teacher" ? () => {
+      if (!confirm("授業を終了して、選択中の生徒をすべて閉じますか？")) return;
+      endTeacherLesson();
+    } : null;
+  }
   $("loginView").classList.add("hidden");
   $("workspace").classList.remove("hidden");
   $("userName").textContent = state.session?.name || "—";
@@ -640,29 +693,23 @@ function selectStudent(student) {
   }
   state.activeStudentId = String(student.studentId);
   state.activeView = "selected";
+  persistTeacherLessonSelection();
   openView("selected");
 }
 
 function selectedTabsHtml() {
   if (!state.selectedStudents.length) return "";
-  return `<div class="studentTabs">${state.selectedStudents.map((student) => `<div class="studentTabWrap ${String(student.studentId) === state.activeStudentId ? "active" : ""}"><button class="studentTab" data-id="${esc(student.studentId)}">${esc(student.name)}</button><button class="studentTabClose" data-id="${esc(student.studentId)}" data-name="${esc(student.name)}" type="button" aria-label="${esc(student.name)}さんを選択から外す">×</button></div>`).join("")}</div>`;
+  return `<div class="studentTabs">${state.selectedStudents.map((student) => `<div class="studentTabWrap ${String(student.studentId) === state.activeStudentId ? "active" : ""}"><button class="studentTab" data-id="${esc(student.studentId)}">${esc(student.name)}</button></div>`).join("")}</div>`;
 }
 
 function bindSelectedTabs() {
   $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => activateTeacherStudent(button.dataset.id));
-  $("content").querySelectorAll(".studentTabClose").forEach((button) => button.onclick = () => {
-    if (!confirm(`${button.dataset.name}さんを選択から外して、生徒を選び直しますか？`)) return;
-    state.selectedStudents = state.selectedStudents.filter((student) => String(student.studentId) !== button.dataset.id);
-    delete state.teacherStudentCache[button.dataset.id];
-    state.activeStudentId = "";
-    state.activeView = "search";
-    openView("search");
-  });
 }
 
 function activateTeacherStudent(studentId) {
   state.activeStudentId = String(studentId);
   state.activeView = "selected";
+  persistTeacherLessonSelection();
   renderShell();
   return renderTeacherStudent(state.activeStudentId).then(() => {
     const button = $("inputLesson");
@@ -1277,6 +1324,7 @@ async function restore() {
 
     const result = await api("resumeSession", {}, { silent: true });
     state.session = { ...parsed, ...result.session };
+    if (state.role === "teacher") restoreTeacherLessonSelection();
     renderShell();
     finishBoot(false);
     await openView(state.activeView);

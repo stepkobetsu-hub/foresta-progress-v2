@@ -162,3 +162,16 @@
 
 /* elementary-middle-like-20260831 */
 .elementaryRecentTestGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}.elementaryRecentTestGrid>section{border:1px solid #dbe4e7;border-radius:14px;padding:12px;background:#fbfdfd}.elementaryRecentTestGrid h3{margin:0 0 8px;font-size:.98rem}.elementarySubjectTestList{display:grid;gap:6px}.elementarySubjectTestRow{display:grid;grid-template-columns:58px 1fr auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid #edf1f2}.elementarySubjectTestRow:last-child{border-bottom:0}.elementarySubjectTestRow span{font-size:.78rem;color:#64748b}.elementarySubjectTestRow strong{font-size:.88rem}.elementarySubjectTestRow b{font-size:1rem}.elementaryOtherTests{margin-top:10px}.elementaryTopTestEntry{margin:12px 0 16px}.elementaryTopTestForm{display:grid;grid-template-columns:110px minmax(180px,1.5fr) 90px 90px 150px auto;gap:10px;align-items:end}.elementaryTopTestForm label{display:grid;gap:4px;font-size:.78rem;font-weight:700}.elementaryUnitTestButton{border:1px solid #f1c27d;background:#fffaf0;color:#8a4b08;border-radius:9px;padding:6px 9px;font-weight:800;cursor:pointer}.elementaryUnitTestButton:hover{background:#fff3d6}.emptyState.compact{padding:12px}@media(max-width:900px){.elementaryRecentTestGrid{grid-template-columns:1fr}.elementaryTopTestForm{grid-template-columns:1fr 1fr}.elementaryTopTestForm button{grid-column:1/-1}}
+
+/* Role indicator and persistent teacher lesson controls. */
+.topbarActions{display:flex;align-items:center;gap:10px;min-width:0}
+.topAdminEntry{border:0;background:transparent;padding:0;color:#115e59;font-size:.88rem;font-weight:800;cursor:pointer;white-space:nowrap}
+.modeIndicator{display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--line);background:#f7faf9;border-radius:999px}
+.modeIndicator span{padding:6px 10px;border-radius:999px;font-size:.74rem;font-weight:900;color:#77827f;white-space:nowrap}
+.modeIndicator span.active{background:var(--forest);color:#fff;box-shadow:0 2px 8px rgba(15,118,110,.18)}
+.lessonEndButton{border:1px solid #e8a667;background:#fff7ed;color:#9a3412;border-radius:10px;padding:8px 12px;font-size:.78rem;font-weight:900;cursor:pointer;white-space:nowrap}
+.lessonEndButton:hover{background:#ffedd5}
+.studentTabWrap{display:inline-flex;align-items:center;border-radius:999px}
+.studentTabWrap.active .studentTab{background:var(--forest);color:#fff;border-color:var(--forest)}
+@media(max-width:860px){.topbarActions{gap:6px}.modeIndicator span{padding:5px 7px;font-size:.66rem}.lessonEndButton{padding:7px 9px;font-size:.7rem}.topAdminEntry{display:none}}
+@media(max-width:560px){.goalLink{display:none}.modeIndicator span{padding:5px 6px}}
