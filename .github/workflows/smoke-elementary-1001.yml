@@ -1,4 +1,5 @@
 name: Smoke elementary 1001
+# trigger
 on:
   push:
     branches: [main]
