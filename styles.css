@@ -175,3 +175,9 @@
 .studentTabWrap.active .studentTab{background:var(--forest);color:#fff;border-color:var(--forest)}
 @media(max-width:860px){.topbarActions{gap:6px}.modeIndicator span{padding:5px 7px;font-size:.66rem}.lessonEndButton{padding:7px 9px;font-size:.7rem}.topAdminEntry{display:none}}
 @media(max-width:560px){.goalLink{display:none}.modeIndicator span{padding:5px 6px}}
+
+/* Teacher session controls: explicit student change + larger lesson end. */
+.studentChangeButton{border:1px solid #b8d8d1;background:#eef8f5;color:#115e59;border-radius:10px;padding:9px 14px;font-size:.82rem;font-weight:900;cursor:pointer;white-space:nowrap}
+.studentChangeButton:hover{background:#dff4ee}
+.lessonEndButton{padding:11px 19px!important;font-size:.92rem!important;border-width:2px!important;box-shadow:0 3px 10px rgba(154,52,18,.10)}
+@media(max-width:860px){.studentChangeButton{padding:7px 9px;font-size:.7rem}.lessonEndButton{padding:9px 12px!important;font-size:.78rem!important}}

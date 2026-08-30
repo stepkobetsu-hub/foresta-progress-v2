@@ -193,6 +193,23 @@ function endTeacherLesson() {
   openView("search");
 }
 
+function changeTeacherStudent() {
+  if (state.role !== "teacher") return;
+  const activeId = String(state.activeStudentId || "");
+  if (!activeId) { state.activeView = "search"; return openView("search"); }
+  const active = state.selectedStudents.find((student) => String(student.studentId) === activeId);
+  const label = active?.name ? `${active.name}さん` : "現在の生徒";
+  if (!confirm(`${label}を選択から外して、生徒を選び直しますか？`)) return;
+  state.selectedStudents = state.selectedStudents.filter((student) => String(student.studentId) !== activeId);
+  delete state.teacherStudentCache[activeId];
+  state.activeStudentId = state.selectedStudents[0] ? String(state.selectedStudents[0].studentId) : "";
+  state.dashboard = null;
+  window.__FORESTA_ACTIVE_DASHBOARD__ = null;
+  persistTeacherLessonSelection();
+  state.activeView = "search";
+  openView("search");
+}
+
 function navItems() {
   if (state.role === "student" && isElementaryGradeValue(state.session?.grade)) return [["home","今日の進捗"],["homework","宿題"]];
   if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];
@@ -220,6 +237,12 @@ function renderShell() {
       if (!confirm("授業を終了して、選択中の生徒をすべて閉じますか？")) return;
       endTeacherLesson();
     } : null;
+  }
+  const studentChangeButton = $("studentChangeButton");
+  if (studentChangeButton) {
+    const canChange = state.role === "teacher" && state.selectedStudents.length > 0;
+    studentChangeButton.classList.toggle("hidden", !canChange);
+    studentChangeButton.onclick = canChange ? changeTeacherStudent : null;
   }
   $("loginView").classList.add("hidden");
   $("workspace").classList.remove("hidden");

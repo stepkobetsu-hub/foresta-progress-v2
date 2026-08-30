@@ -4,3 +4,11 @@
 .elementaryTopTestForm{grid-template-columns:minmax(82px,.65fr) minmax(175px,1.55fr) repeat(4,minmax(72px,.55fr)) minmax(132px,.8fr) auto}
 @media(max-width:1120px){.elementaryTopTestForm{grid-template-columns:repeat(4,minmax(0,1fr))}.elementaryTopTestForm #elementaryTopTestUnitWrap{grid-column:span 2}.elementaryTopTestForm .elementaryTopTestDate{grid-column:span 2}}
 @media(max-width:720px){.elementaryTopTestForm{grid-template-columns:1fr 1fr}.elementaryTopTestForm #elementaryTopTestUnitWrap,.elementaryTopTestForm .elementaryTopTestDate,.elementaryTopTestForm .primaryBtn{grid-column:1/-1}}
+
+/* Elementary top-test save button: upper-right beside the test-date label. */
+@media(min-width:1121px){
+  .elementaryTopTestForm .primaryBtn{align-self:start!important;justify-self:end!important;min-height:36px!important;padding:8px 15px!important;margin-top:0!important}
+}
+@media(max-width:1120px) and (min-width:721px){
+  .elementaryTopTestForm .primaryBtn{justify-self:end!important;min-width:92px}
+}
