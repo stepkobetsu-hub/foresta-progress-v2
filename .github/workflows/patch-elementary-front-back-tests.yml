@@ -1,0 +1,28 @@
+name: Patch elementary front-back tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/patch-elementary-front-back-tests.py
+      - .github/workflows/patch-elementary-front-back-tests.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: python scripts/patch-elementary-front-back-tests.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js elementary-supabase.js elementary-supabase.css elementary-enhancement.css index.html
+          git commit -m "Add cancellable front-back elementary tests and fix lower layout"
+          git push origin HEAD:main
