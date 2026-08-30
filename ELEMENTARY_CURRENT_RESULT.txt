@@ -1,2 +1,0 @@
-Applied elementary-school support from uploaded math/English progression tables.
-exit_code=0
