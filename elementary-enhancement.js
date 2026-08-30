@@ -5,6 +5,7 @@ const EXTRA = ["理科", "社会"];
 let progressionPromise = null;
 let enhancing = false;
 let lastSignature = "";
+const nativeProgressReady = new Map();
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 const normalizeSubject = (value) => String(value || "").trim() === "数学" ? "算数" : String(value || "").trim();
@@ -57,6 +58,20 @@ async function loadDashboard() {
   const session = readSession();
   if (!id || !session) return null;
   return callApi("getStudentDashboard", session.role === "teacher" ? { studentId: id } : {});
+}
+
+
+async function probeNativeProgress(subject, dashboard) {
+  const normalized = normalizeSubject(subject);
+  try {
+    const data = await callApi("getProgression", { studentId: pageStudentId(), subject: normalized });
+    const ready = !!(data?.summary?.elementary && Array.isArray(data?.units) && data.units.length);
+    nativeProgressReady.set(normalized, ready);
+    return ready;
+  } catch (_) {
+    nativeProgressReady.set(normalized, false);
+    return false;
+  }
 }
 
 async function loadProgressions() {
@@ -198,6 +213,7 @@ async function enhanceElementary() {
   try {
     const dashboard = await loadDashboard().catch(() => null);
     const enrolled = enrolledSubjects(dashboard);
+    await Promise.all(enrolled.map((subject) => probeNativeProgress(subject, dashboard)));
     const cards = [...grid.querySelectorAll(".elementarySubjectCard")];
     const extraDetails = ensureExtraDetails(grid);
     const extraBody = extraDetails.querySelector(".elementaryFoldedBody");
@@ -231,6 +247,7 @@ document.addEventListener("click", (event) => {
   const card = button.closest(".elementarySubjectCard");
   const subject = normalizeSubject(card?.querySelector(".subjectPill")?.textContent || button.dataset.subject);
   if (!["算数", "英語"].includes(subject)) return;
+  if (nativeProgressReady.get(subject) === true) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   showStaticProgression(subject);
