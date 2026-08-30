@@ -367,7 +367,8 @@ function currentElementaryTeacherHomeworkSubject() {
   if (!isTeacherContext(readSession())) return "";
   const values = new Set(["算数","数学","国語","英語","理科","社会"]);
   const selects = [...document.querySelectorAll("select")].filter((select) => values.has(String(select.value || "").trim()));
-  const preferred = selects.find((select) => /subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || selects[0];
+  const eligible = selects.filter((select) => !/top.?test|test.?subject|score/i.test(`${select.id} ${select.name} ${select.className}`));
+  const preferred = eligible.find((select) => /lesson|course|subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || eligible[0] || selects[0];
   return normalizeSubject(preferred?.value || "");
 }
 function elementaryArchiveCards(groups) {

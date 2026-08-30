@@ -237,7 +237,8 @@ function currentTeacherHomeworkSubject() {
   if (state.role !== "teacher") return "";
   const subjectValues = new Set(["国語","数学","算数","英語","理科","社会"]);
   const selects = [...document.querySelectorAll("select")].filter((select) => subjectValues.has(String(select.value || "").trim()));
-  const preferred = selects.find((select) => /subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || selects[0];
+  const eligible = selects.filter((select) => !/top.?test|test.?subject|score/i.test(`${select.id} ${select.name} ${select.className}`));
+  const preferred = eligible.find((select) => /lesson|course|subject|kamoku|科目/i.test(`${select.id} ${select.name} ${select.className}`)) || eligible[0] || selects[0];
   if (preferred?.value) teacherHomeworkSubjectMemory = String(preferred.value).trim();
   return teacherHomeworkSubjectMemory;
 }
