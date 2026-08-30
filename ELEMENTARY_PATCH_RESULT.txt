@@ -1,17 +1,13 @@
-file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:23
-function renderElementaryStudent(data){const rows=data.progress||[];$("content").innerHTML=\`<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>\${esc(data.student.name)}さんの進捗</h1><p>\${esc(data.student.school||"学校未登録")} / \${esc(data.student.grade)}　学校との差を単元数で確認します。</p></div></header><section class="elementaryProgressGrid">\${rows.map(r=>\`<article class="card elementarySubjectCard \${subjectProgressClass(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">\${esc(r.subject)}</span><strong class="elementaryDifference \${elementaryDiffClass(r.differenceUnits)}">\${esc(r.differenceLabel||"未設定")}</strong></div><p><small>学校</small><br><strong>\${esc(r.schoolUnitName||"未入力")}</strong></p><p><small>塾</small><br><strong>\${esc(r.forestaUnitName||"未入力")}</strong></p><p>直近テスト：\${r.latestUnitTest?`<strong class="elementaryScore">\${esc(r.latestUnitTest.score)}点</strong>`:"未登録"}</p><button class="secondaryBtn elementaryStudentProgress" data-subject="\${esc(r.subject)}">進行表を見る</button></article>\`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">学校の単元テスト</p>\${elementaryTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">次回までの宿題</p><button id="openHomeworkArchiveHome" class="ghostBtn">アーカイブ</button></div><div class="homeworkList">\${homeworkHtml(data.homework||[],"student")}</div></article></section>\`;$("content").querySelectorAll(".elementaryStudentProgress").forEach(b=>b.onclick=()=>openProgress({subject:b.dataset.subject,mode:"view"}));bindHomeworkChecks();bindHomeworkArchiveActions("student");$("openHomeworkArchiveHome")?.addEventListener("click",()=>openView("homeworkArchive"))}
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  ^^^^^
+file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:13
+function once(src,find,repl,label){const n=src.split(find).length-1;if(n!==1)throw new Error(`${label}: ${n} matches`);return src.replace(find,repl)}
+                                                                                   ^
 
-SyntaxError: Unexpected token 'class'
-    at compileSourceTextModule (node:internal/modules/esm/utils:346:16)
-    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:110:18)
-    at #translate (node:internal/modules/esm/loader:559:20)
-    at afterLoad (node:internal/modules/esm/loader:612:29)
-    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:617:12)
-    at #createModuleJob (node:internal/modules/esm/loader:640:36)
-    at #getJobFromResolveResult (node:internal/modules/esm/loader:353:34)
-    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:321:41)
-    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:25)
+Error: homework guide: 0 matches
+    at once (file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:13:84)
+    at file:///home/runner/work/foresta-progress-v2/foresta-progress-v2/scripts/apply-20260831-elementary.mjs:29:5
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
 
 Node.js v22.23.2
 exit_code=1
