@@ -21,3 +21,9 @@
 .elementaryRecentTestGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:18px!important}
 .elementaryRecentTestGrid section{min-width:0!important;padding:14px!important}
 @media(max-width:760px){.elementaryRecentTestGrid{grid-template-columns:1fr!important}.elementarySubjectTestRow{grid-template-columns:44px minmax(0,1fr) 92px!important}}
+
+/* Elementary score readability and fast student switching presentation. */
+.elementaryTestScorePair em{font-style:normal;font-size:1.18rem;font-weight:950;color:#0b5f50;line-height:1}
+.elementaryTestScorePair small{font-size:.72rem;font-weight:700;color:#58716b}
+.elementarySubjectTestRow{min-height:48px}
+.elementarySubjectTestRow>strong{font-size:.86rem}

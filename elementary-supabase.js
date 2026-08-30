@@ -108,6 +108,12 @@ async function loadDashboard() {
   const id = pageStudentId();
   const session = readSession();
   if (!id || !session) return null;
+  const active = window.__FORESTA_ACTIVE_DASHBOARD__;
+  if (active?.student && String(active.student.studentId || active.student.loginId || "") === String(id)) {
+    lastDashboard = active;
+    return active;
+  }
+  if (lastDashboard?.student && String(lastDashboard.student.studentId || lastDashboard.student.loginId || "") === String(id)) return lastDashboard;
   const data = await callApi("getStudentDashboard", isTeacherContext(session) ? { studentId: id } : {});
   lastDashboard = data;
   return data;
@@ -190,9 +196,9 @@ function testScoreText(test) {
 
 function testScoreHtml(test) {
   if (!test) return "";
-  const front = `<span>表 ${esc(test.score ?? "-")}/${esc(test.max_score || 100)}</span>`;
+  const front = `<span>表 <em>${esc(test.score ?? "-")}</em><small>/${esc(test.max_score || 100)}</small></span>`;
   const hasBack = test.back_score !== null && test.back_score !== undefined && String(test.back_score) !== "";
-  const back = hasBack ? `<span>裏 ${esc(test.back_score)}/${esc(test.back_max_score || 50)}</span>` : `<span class="muted">裏 未入力</span>`;
+  const back = hasBack ? `<span>裏 <em>${esc(test.back_score)}</em><small>/${esc(test.back_max_score || 50)}</small></span>` : `<span class="muted">裏 未入力</span>`;
   return `${front}${back}`;
 }
 
@@ -233,7 +239,7 @@ async function updateTopCards(dashboard, data) {
     const testP = paragraphs.find((p) => p.textContent.includes("直近"));
     if (schoolP) schoolP.innerHTML = `<small>学校</small><br><strong>${esc(summary.schoolUnit?.unitName || "未入力")}</strong>`;
     if (jukuP) jukuP.innerHTML = `<small>塾</small><br><strong>${esc(summary.jukuUnit?.unitName || "未入力")}</strong>`;
-    if (testP) testP.innerHTML = `直近の学校単元テスト：${summary.test ? `<strong class="elementaryScore">${esc(testScoreText(summary.test))}</strong>` : "未登録"}`;
+    if (testP) testP.remove();
 
     const select = card.querySelector(".elementarySchoolPosition");
     if (select && units.length) {
