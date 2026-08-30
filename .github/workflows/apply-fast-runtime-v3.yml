@@ -1,0 +1,29 @@
+name: Apply Foresta V3 fast runtime
+on:
+  push:
+    branches: [agent/foresta-v3-fast-runtime-20260831]
+    paths:
+      - scripts/apply-fast-runtime-v3.py
+      - .github/workflows/apply-fast-runtime-v3.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/foresta-v3-fast-runtime-20260831
+          fetch-depth: 0
+      - run: python scripts/apply-fast-runtime-v3.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - name: Commit fast runtime client
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js config.js
+          git commit -m "Add opt-in V3 fast runtime client" || exit 0
+          git push origin HEAD:agent/foresta-v3-fast-runtime-20260831
