@@ -727,7 +727,11 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
           result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" });
           status("今日の進行を取り消しました。関連する本日の宿題も取り消しました。");
         } else {
-          status("今日の進行を保存しました。必要なら『次回宿題を確認・調整』で宿題を減らしたり追加できます。");
+          // Match the middle-school flow: selecting today's progress does not finalize homework yet.
+          // Clear the temporary defaults created by the compatibility endpoint; the confirmation screen
+          // starts with the normal presets checked and the teacher decides what to keep.
+          result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" });
+          status("今日の進行を保存しました。『次回宿題を確認・調整』で宿題を確認して保存してください。");
         }
         result.studentId = String(pageStudentId() || "");
         elementaryDataCache.set(result.studentId, result);
