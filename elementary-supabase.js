@@ -32,6 +32,10 @@ function pageRoleHint() {
 }
 
 function readSession() {
+  // app.js owns the live session. Prefer it over local/sessionStorage so a
+  // remembered student login can never override a teacher currently using the page.
+  const active = window.__FORESTA_ACTIVE_SESSION__;
+  if (active?.token) return active;
   const candidates = [];
   for (const store of [sessionStorage, localStorage]) {
     for (const key of ["forestaProgressSession", "forestaProgressAuth"]) {
