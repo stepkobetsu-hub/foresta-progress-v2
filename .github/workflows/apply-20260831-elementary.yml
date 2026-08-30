@@ -1,0 +1,51 @@
+name: Apply elementary school support 20260831
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - elementary-pr-trigger-20260831.txt
+      - scripts/apply-20260831-elementary.mjs
+      - .github/workflows/apply-20260831-elementary.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply elementary patch
+        run: node scripts/apply-20260831-elementary.mjs
+
+      - name: Validate JavaScript and Apps Script syntax
+        shell: bash
+        run: |
+          node --check app.js
+          cp apps-script/Code.gs /tmp/foresta-code.js
+          node --check /tmp/foresta-code.js
+
+      - name: Run tests
+        run: npm test
+
+      - name: Commit patched files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css index.html apps-script/Code.gs
+          if git diff --cached --quiet; then
+            echo "No patch changes to commit."
+            exit 0
+          fi
+          git commit -m "Add elementary school progress and unit tests"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
