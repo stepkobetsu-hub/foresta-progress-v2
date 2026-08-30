@@ -22,18 +22,37 @@ const englishKey = (value) => {
   return "";
 };
 
+function pageRoleHint() {
+  if (document.querySelector('.elementaryTeacherGuide,#elementaryLessonTeacher,.navButton[data-view="search"],.navButton[data-view="today"],.navButton[data-view="selected"]')) return "teacher";
+  const meta = String(document.getElementById("userMeta")?.textContent || "");
+  if (meta.includes("講師")) return "teacher";
+  if (meta.includes("生徒")) return "student";
+  if (meta.includes("管理者")) return "admin";
+  return "";
+}
+
 function readSession() {
-  for (const store of [localStorage, sessionStorage]) {
-    for (const key of ["forestaProgressAuth", "forestaProgressSession"]) {
+  const candidates = [];
+  for (const store of [sessionStorage, localStorage]) {
+    for (const key of ["forestaProgressSession", "forestaProgressAuth"]) {
       try {
         const raw = store.getItem(key);
         if (!raw) continue;
         const parsed = JSON.parse(raw);
-        if (parsed?.token) return parsed;
+        if (parsed?.token && !candidates.some((item) => item.token === parsed.token)) candidates.push(parsed);
       } catch (_) {}
     }
   }
-  return null;
+  const hint = pageRoleHint();
+  if (hint) {
+    const matched = candidates.find((item) => item.role === hint);
+    if (matched) return matched;
+  }
+  return candidates[0] || null;
+}
+
+function isTeacherContext(session = null) {
+  return pageRoleHint() === "teacher" || session?.role === "teacher";
 }
 
 function status(message, error = false) {
@@ -76,7 +95,7 @@ async function callElementary(action, payload = {}) {
 
 function pageStudentId() {
   const session = readSession();
-  if (session?.role === "student") return String(session.studentId || session.loginId || "");
+  if (!isTeacherContext(session) && session?.role === "student") return String(session.studentId || session.loginId || "");
   const text = document.querySelector(".pageHead p")?.textContent || "";
   return text.match(/\b(\d{4})\b/)?.[1] || "";
 }
@@ -85,7 +104,7 @@ async function loadDashboard() {
   const id = pageStudentId();
   const session = readSession();
   if (!id || !session) return null;
-  const data = await callApi("getStudentDashboard", session.role === "teacher" ? { studentId: id } : {});
+  const data = await callApi("getStudentDashboard", isTeacherContext(session) ? { studentId: id } : {});
   lastDashboard = data;
   return data;
 }
@@ -221,7 +240,7 @@ function unitSelectOptions(units, selected = "") {
 
 async function bindTopTestForm(dashboard) {
   const session = readSession();
-  if (session?.role !== "teacher") return;
+  if (!isTeacherContext(session)) return;
   const form = document.getElementById("elementaryTopTestForm");
   if (!form) return;
   const subjects = enrolledSubjects(dashboard);
@@ -322,7 +341,7 @@ async function showInteractiveProgression(subject) {
       if (!lessonDates.has(row.unit_id)) lessonDates.set(row.unit_id, []);
       lessonDates.get(row.unit_id).push(row.lesson_date);
     }
-    const teacher = session?.role === "teacher";
+    const teacher = isTeacherContext(session);
     openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "中学生と同じように、今日の進行・学校の現在地・単元テストをこの表で入力できます。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${units.map((u) => { const dates=(lessonDates.get(u.unitId)||[]).sort().reverse(); const learned=dates.length>0; const school=u.unitId===summary.school?.unit_id; return `<tr class="${learned ? "elementaryLearned" : ""} ${school ? "elementarySchoolCurrent" : ""}" data-unit="${esc(u.unitId)}"><td>${esc(u.unitNumber || "")}</td><td><strong>${esc(u.unitName || "")}</strong><small>${esc(u.chapter || "")}</small>${dates.length ? `<small class="elementaryLessonDates">授業 ${dates.slice(0,3).map(shortDate).join("・")}</small>` : ""}</td><td>${esc(u.page || "")}</td>${teacher ? `<td><label class="elementaryTodayToggle"><input type="checkbox" data-action="today" data-unit="${esc(u.unitId)}" ${todaySet.has(u.unitId) ? "checked" : ""}><span>${todaySet.has(u.unitId) ? "✓ 今日" : "今日"}</span></label></td><td><button type="button" class="elementarySchoolPin ${school ? "active" : ""}" data-action="school" data-unit="${esc(u.unitId)}">${school ? "🏫 学校" : "🏫"}</button></td><td><button type="button" class="elementaryInlineTest" data-action="test" data-unit="${esc(u.unitId)}">📝 テスト</button></td>` : `<td>${learned ? "学習済" : ""}${school ? " / 🏫学校" : ""}</td>`}</tr>`; }).join("")}</tbody></table></div></div>`);
     if (!teacher) return;
     const body = document.getElementById("modalBody");
