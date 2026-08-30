@@ -238,12 +238,6 @@ function renderShell() {
       endTeacherLesson();
     } : null;
   }
-  const studentChangeButton = $("studentChangeButton");
-  if (studentChangeButton) {
-    const canChange = state.role === "teacher" && state.selectedStudents.length > 0;
-    studentChangeButton.classList.toggle("hidden", !canChange);
-    studentChangeButton.onclick = canChange ? changeTeacherStudent : null;
-  }
   $("loginView").classList.add("hidden");
   $("workspace").classList.remove("hidden");
   $("userName").textContent = state.session?.name || "—";
@@ -722,11 +716,13 @@ function selectStudent(student) {
 
 function selectedTabsHtml() {
   if (!state.selectedStudents.length) return "";
-  return `<div class="studentTabs">${state.selectedStudents.map((student) => `<div class="studentTabWrap ${String(student.studentId) === state.activeStudentId ? "active" : ""}"><button class="studentTab" data-id="${esc(student.studentId)}">${esc(student.name)}</button></div>`).join("")}</div>`;
+  return `<div class="studentTabsBar"><div class="studentTabs">${state.selectedStudents.map((student) => `<div class="studentTabWrap ${String(student.studentId) === state.activeStudentId ? "active" : ""}"><button class="studentTab" data-id="${esc(student.studentId)}">${esc(student.name)}</button></div>`).join("")}</div><button id="studentChangeButton" class="studentChangeButton selectedStudentChangeButton" type="button">生徒変更</button></div>`;
 }
 
 function bindSelectedTabs() {
   $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => activateTeacherStudent(button.dataset.id));
+  const changeButton = $("studentChangeButton");
+  if (changeButton) changeButton.onclick = changeTeacherStudent;
 }
 
 function activateTeacherStudent(studentId) {

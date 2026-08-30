@@ -181,3 +181,9 @@
 .studentChangeButton:hover{background:#dff4ee}
 .lessonEndButton{padding:11px 19px!important;font-size:.92rem!important;border-width:2px!important;box-shadow:0 3px 10px rgba(154,52,18,.10)}
 @media(max-width:860px){.studentChangeButton{padding:7px 9px;font-size:.7rem}.lessonEndButton{padding:9px 12px!important;font-size:.78rem!important}}
+
+/* Keep student-change next to the selected student pills. */
+.studentTabsBar{display:flex;align-items:center;gap:12px;margin:10px 0 16px;min-width:0}
+.studentTabsBar .studentTabs{flex:1;min-width:0;margin:0}
+.selectedStudentChangeButton{flex:0 0 auto}
+@media(max-width:700px){.studentTabsBar{align-items:flex-start;flex-wrap:wrap}.studentTabsBar .studentTabs{flex-basis:100%}}
