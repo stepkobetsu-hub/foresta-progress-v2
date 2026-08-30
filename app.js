@@ -41,12 +41,45 @@ let teacherSearchTimer = 0;
 const PROGRESSION_CACHE_TTL_MS = 120000;
 const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("fastv3") === "1";
 const FAST_RUNTIME_AUTH_ACTIONS = new Set(["studentLogin","staffLogin","resumeSession","logout","adminReauth","resumeAdminSession"]);
-const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead"]);
+const FAST_RUNTIME_READ_ACTIONS = new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive"]);
+const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","studentCheckHomework","teacherCheckHomework"]);
+const FAST_LOCAL_READ_ACTIONS = new Set(["getStudentDashboard","getProgression"]);
+const FAST_LOCAL_CACHE_PREFIX = "forestaFastV3:";
 function apiEndpointFor(action) {
   if (!FAST_RUNTIME_ENABLED || FAST_RUNTIME_AUTH_ACTIONS.has(action) || !CONFIG.fastRuntimeApiUrl) return CONFIG.apiUrl;
+  if (!FAST_RUNTIME_READ_ACTIONS.has(action) && !FAST_RUNTIME_WRITE_ACTIONS.has(action)) return CONFIG.apiUrl;
   return CONFIG.fastRuntimeApiUrl;
 }
 function usingFastRuntimeFor(action) { return apiEndpointFor(action) === CONFIG.fastRuntimeApiUrl; }
+function fastLocalCacheKey(action, payload = {}) {
+  const studentId = payload.studentId || state.activeStudentId || state.session?.studentId || state.session?.loginId || "self";
+  return `${FAST_LOCAL_CACHE_PREFIX}${state.role}|${state.session?.loginId || ""}|${studentId}|${action}|${payload.subject || ""}|${payload.mode || ""}`;
+}
+function readFastLocalCache(action, payload = {}) {
+  if (!FAST_RUNTIME_ENABLED || !FAST_LOCAL_READ_ACTIONS.has(action)) return null;
+  try {
+    const raw = sessionStorage.getItem(fastLocalCacheKey(action, payload));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.data || Date.now() - Number(parsed.savedAt || 0) > 6 * 60 * 60 * 1000) return null;
+    return parsed.data;
+  } catch (_) { return null; }
+}
+function writeFastLocalCache(action, payload, data) {
+  if (!FAST_RUNTIME_ENABLED || !FAST_LOCAL_READ_ACTIONS.has(action) || !data) return;
+  try { sessionStorage.setItem(fastLocalCacheKey(action, payload), JSON.stringify({ savedAt: Date.now(), data })); } catch (_) {}
+}
+function scheduleFastRefreshAfterWrite(action, requestBody) {
+  if (!FAST_RUNTIME_ENABLED || !FAST_RUNTIME_WRITE_ACTIONS.has(action)) return;
+  const studentId = requestBody.studentId || state.activeStudentId || state.session?.studentId || "";
+  setTimeout(() => {
+    const dashboardPayload = state.role === "student" ? {} : (studentId ? { studentId } : {});
+    api("getStudentDashboard", dashboardPayload, { silent: true, forceNetwork: true }).catch(() => {});
+    if (studentId && requestBody.subject && ["saveLesson","updateLessonCorrection","saveSchoolPosition","saveCt"].includes(action)) {
+      api("getProgression", { studentId, subject: requestBody.subject, mode: "lesson" }, { silent: true, forceNetwork: true }).catch(() => {});
+    }
+  }, 2500);
+}
 
 function progressionCacheKey(options = {}) {
   if (options.mode === "range") return ["range", options.school || "", options.grade || "", options.subject || "", options.testId || "", options.rangeType || ""].join("|");
@@ -90,8 +123,15 @@ function prefetchProgression(options) {
   loadProgression(options).catch(() => {});
 }
 
-async function api(action, payload = {}, { silent = false } = {}) {
+async function api(action, payload = {}, { silent = false, forceNetwork = false } = {}) {
   if (CONFIG.apiUrl.includes("__GAS_")) throw new Error("公開APIの設定が完了していません。再読み込みしてください。");
+  if (!forceNetwork) {
+    const local = readFastLocalCache(action, payload);
+    if (local) {
+      queueMicrotask(() => api(action, payload, { silent: true, forceNetwork: true }).catch(() => {}));
+      return { ...local, _fastLocalCache: true };
+    }
+  }
   const requestBody = { action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload };
   const attempt = async (endpoint, fastAttempt = false) => {
     const controller = new AbortController();
@@ -114,12 +154,15 @@ async function api(action, payload = {}, { silent = false } = {}) {
   const endpoint = apiEndpointFor(action);
   try {
     const result = await attempt(endpoint, endpoint === CONFIG.fastRuntimeApiUrl);
+    writeFastLocalCache(action, payload, result);
+    if (result?.queued) scheduleFastRefreshAfterWrite(action, requestBody);
     status("");
     return result;
   } catch (error) {
     if (endpoint === CONFIG.fastRuntimeApiUrl) {
       try {
         const fallback = await attempt(CONFIG.apiUrl, false);
+        writeFastLocalCache(action, payload, fallback);
         status("");
         return { ...fallback, _fastRuntimeFallback: true };
       } catch (fallbackError) {
@@ -648,7 +691,12 @@ function bindTeacherHomeworkChecks() {
     const nextChecked = input.checked;
     input.disabled = true;
     try {
-      await api("teacherCheckHomework", { homeworkId: input.dataset.id, checked: nextChecked });
+      const result = await api("teacherCheckHomework", { studentId: state.activeStudentId, homeworkId: input.dataset.id, checked: nextChecked });
+      if (FAST_RUNTIME_ENABLED && result?.queued && !result?._fastRuntimeFallback) {
+        input.disabled = false;
+        status("講師チェックを保存しました（高速保存）。");
+        return;
+      }
       if (state.activeStudentId) {
         delete state.teacherStudentCache[String(state.activeStudentId)];
         await renderTeacherStudent(state.activeStudentId, { force: true });
@@ -1326,11 +1374,7 @@ async function saveLessonWithHomework(options, homeworkByUnit) {
     delete $("modal").dataset.refreshTeacher;
     closeModal();
     if (FAST_RUNTIME_ENABLED && saveResult?.queued && !saveResult?._fastRuntimeFallback) {
-      status(`${correcting ? "訂正内容を" : ""}保存しました（高速保存）。同期はバックグラウンドで続きます。`);
-      setTimeout(() => {
-        delete state.teacherStudentCache[String(options.studentId)];
-        if (state.activeView === "selected" && String(state.activeStudentId) === String(options.studentId)) openView("selected").catch(() => {});
-      }, 1800);
+      status(`${correcting ? "訂正内容を" : ""}保存しました（高速保存）。画面を待たせず、同期はバックグラウンドで続きます。`);
       return;
     }
     status(`${correcting ? "訂正内容を" : ""}保存しました。画面を更新しています…`);
