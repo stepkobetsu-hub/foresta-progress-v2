@@ -1,6 +1,6 @@
 result=V2_3_1_SELF_DELETE_DEPLOYED
-checked_at=2026-08-23T09:32:18Z
-get={"ok":true,"app":"フォレスタ進捗管理","version":"2.3.1","time":"2026-08-23T18:32:14+09:00"}
+checked_at=2026-08-30T16:35:08Z
+get={"ok":true,"app":"フォレスタ進捗管理","version":"2.3.1","time":"2026-08-31T01:35:03+09:00"}
 health={"ok":true,"status":"ready","timeZone":"Asia/Tokyo"}
 archive={"ok":false,"message":"ログインの有効期限が切れました。もう一度ログインしてください。"}
 restore={"ok":false,"message":"ログインの有効期限が切れました。もう一度ログインしてください。"}
