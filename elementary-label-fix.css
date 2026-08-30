@@ -1,0 +1,19 @@
+/* 小学生トップの科目名を、タブレットでも一目で分かる大きさにする */
+.elementarySubjectCard .subjectPill{
+  font-size:1.45rem!important;
+  line-height:1.1!important;
+  font-weight:900!important;
+  padding:9px 15px!important;
+  border-radius:13px!important;
+  letter-spacing:.02em!important;
+}
+.elementarySubjectCard .elementaryCardHead{
+  align-items:center!important;
+  gap:12px!important;
+}
+@media(max-width:760px){
+  .elementarySubjectCard .subjectPill{
+    font-size:1.22rem!important;
+    padding:8px 12px!important;
+  }
+}
