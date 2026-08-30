@@ -1,31 +1,26 @@
 name: Apply elementary school support 20260831
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
     paths:
-      - elementary-pr-trigger-20260831.txt
-      - scripts/apply-20260831-elementary.mjs
-      - .github/workflows/apply-20260831-elementary.yml
+      - elementary-run-trigger-main.txt
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
   apply:
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Check out PR branch
+      - name: Check out feature branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: feature/elementary-school-20260831
           fetch-depth: 0
 
       - name: Apply elementary patch and record failure
-        id: patch
         shell: bash
         run: |
           set +e
@@ -38,7 +33,7 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add ELEMENTARY_PATCH_RESULT.txt
             git commit -m "Record elementary patch failure" || true
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git push origin HEAD:feature/elementary-school-20260831
             exit "$code"
           fi
 
@@ -63,4 +58,4 @@ jobs:
             exit 0
           fi
           git commit -m "Add elementary school progress and unit tests"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:feature/elementary-school-20260831
