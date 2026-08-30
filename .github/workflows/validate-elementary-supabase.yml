@@ -1,0 +1,30 @@
+name: Validate elementary Supabase backend
+
+on:
+  push:
+    branches: [feature/elementary-supabase-backend-20260831]
+    paths:
+      - elementary-supabase.js
+      - elementary-supabase.css
+      - index.html
+      - .github/workflows/validate-elementary-supabase.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/elementary-supabase-backend-20260831
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check elementary-supabase.js
+          cp apps-script/Code.gs /tmp/foresta-code.js
+          node --check /tmp/foresta-code.js
+      - name: Run tests
+        run: npm test
