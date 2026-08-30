@@ -19,7 +19,8 @@ jobs:
       - run: python scripts/persist-teacher-lesson-selection.py
       - run: node --check app.js
       - run: npm test
-      - run: |
+      - name: Commit persistent lesson UI
+        run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add app.js styles.css index.html
