@@ -1,0 +1,29 @@
+name: Persist teacher subject selection
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/persist-teacher-subject-selection.py
+      - .github/workflows/persist-teacher-subject-selection.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - run: python scripts/persist-teacher-subject-selection.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - name: Commit subject persistence
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js styles.css index.html
+          git commit -m "Persist teacher lesson subject for elementary and middle school"
+          git push origin HEAD:main
