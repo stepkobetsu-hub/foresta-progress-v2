@@ -66,9 +66,23 @@ jobs:
       - name: Validate JavaScript and Apps Script syntax
         shell: bash
         run: |
-          node --check app.js
+          set +e
+          : > ELEMENTARY_VALIDATE_RESULT.txt
+          node --check app.js >> ELEMENTARY_VALIDATE_RESULT.txt 2>&1
+          app_code=$?
           cp apps-script/Code.gs /tmp/foresta-code.js
-          node --check /tmp/foresta-code.js
+          node --check /tmp/foresta-code.js >> ELEMENTARY_VALIDATE_RESULT.txt 2>&1
+          gas_code=$?
+          echo "app_code=$app_code gas_code=$gas_code" >> ELEMENTARY_VALIDATE_RESULT.txt
+          cat ELEMENTARY_VALIDATE_RESULT.txt
+          if [ "$app_code" -ne 0 ] || [ "$gas_code" -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ELEMENTARY_VALIDATE_RESULT.txt
+            git commit -m "Record elementary syntax failure" || true
+            git push origin HEAD:feature/elementary-school-20260831
+            exit 1
+          fi
 
       - name: Run tests
         run: npm test
@@ -78,7 +92,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.js styles.css index.html apps-script/Code.gs ELEMENTARY_PATCH_RESULT.txt
+          git add app.js styles.css index.html apps-script/Code.gs ELEMENTARY_PATCH_RESULT.txt ELEMENTARY_VALIDATE_RESULT.txt
           if git diff --cached --quiet; then
             echo "No patch changes to commit."
             exit 0
