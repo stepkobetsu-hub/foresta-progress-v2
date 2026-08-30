@@ -1,0 +1,9 @@
+/home/runner/work/foresta-progress-v2/foresta-progress-v2/app.js:308
+function elementaryTestsHtml(tests){const rows=(tests||[]).slice(0,10);if(!rows.length)return '<div class="emptyState">学校の単元テストはまだ登録されていません。</div>';return '<div class="tableWrap"><table><thead><tr><th>日付</th><th>科目</th><th>単元</th><th>点数</th></tr></thead><tbody>'+rows.map(t=>\`<tr><td>${esc(fmtShortDate(t.testDate))}</td><td>${esc(t.subject)}</td><td>${esc(t.unitName||"")}</td><td><strong class="elementaryScore">${esc(t.score)}/${esc(t.maxScore||100)}</strong></td></tr>\`).join('')+'</tbody></table></div>'}
+                                                                                                                                                                                                                                                                                   ^
+
+SyntaxError: Invalid or unexpected token
+    at checkSyntax (node:internal/main/check_syntax:74:5)
+
+Node.js v22.23.2
+app_code=1 gas_code=0
