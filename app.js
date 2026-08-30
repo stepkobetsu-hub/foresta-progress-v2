@@ -154,6 +154,7 @@ function persistAdminSession() {
 }
 
 function navItems() {
+  if (state.role === "student" && isElementaryGradeValue(state.session?.grade)) return [["home","今日の進捗"],["homework","宿題"]];
   if (state.role === "student") return [["home", "今日の進捗"], ["homework", "宿題"], ["scores", "目標点・成績"]];
   if (state.role === "teacher") return [["search", "生徒を選ぶ"], ["today", "本日の授業"], ["selected", "選択中の生徒"]];
   return [["admin", "本日の速報"], ["ranges", "進行表・テスト範囲設定"], ["training", "特訓部屋"], ["students", "全生徒"]];
@@ -188,8 +189,10 @@ function metricCard(title, value, sub = "", tone = "") {
 }
 
 function subjectProgressClass(subject) {
-  return ({ 英語: "english", 数学: "math", 国語: "japanese", 理科: "science", 社会: "social" })[subject] || "other";
+  return ({ 英語: "english", 数学: "math", 算数: "math", 国語: "japanese", 理科: "science", 社会: "social" })[subject] || "other";
 }
+function isElementaryGradeValue(v){return /^小[1-6]$/.test(String(v||"").normalize("NFKC").replace(/年$/u,""));}
+const ELEMENTARY_HOMEWORK={算数:["TRYの赤×なおし","エクササイズ"],英語:["TRYの赤×なおし","エクササイズ"],国語:["本日の赤×なおし"]};
 
 function mappedRoundWidth(percent) {
   const value = Math.max(0, Math.min(300, Number(percent || 0)));
@@ -269,6 +272,7 @@ async function renderStudent(view) {
   state.dashboard = data;
   cacheStudentDashboard(data);
   if (view === "homework") return renderHomeworkPage(data);
+  if (isElementaryGradeValue(data.student?.grade)) return renderElementaryStudent(data);
   if (view === "scores") return renderScoresPage(data);
   const next = data.nextTest;
   const p = data.progress?.[0] || {};
@@ -298,6 +302,11 @@ async function renderStudent(view) {
   bindHomeworkArchiveActions("student");
   $("openHomeworkArchiveHome")?.addEventListener("click", () => openView("homeworkArchive"));
 }
+
+
+function elementaryDiffClass(v){return v>0?"ahead":v<0?"behind":v===0?"same":"unset"}
+function elementaryTestsHtml(tests){const rows=(tests||[]).slice(0,10);if(!rows.length)return '<div class="emptyState">学校の単元テストはまだ登録されていません。</div>';return '<div class="tableWrap"><table><thead><tr><th>日付</th><th>科目</th><th>単元</th><th>点数</th></tr></thead><tbody>'+rows.map(t=>`<tr><td>${esc(fmtShortDate(t.testDate))}</td><td>${esc(t.subject)}</td><td>${esc(t.unitName||"")}</td><td><strong class="elementaryScore">${esc(t.score)}/${esc(t.maxScore||100)}</strong></td></tr>`).join('')+'</tbody></table></div>'}
+function renderElementaryStudent(data){const rows=data.progress||[];$("content").innerHTML=`<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}さんの進捗</h1><p>${esc(data.student.school||"学校未登録")} / ${esc(data.student.grade)}　学校との差を単元数で確認します。</p></div></header><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><p><small>学校</small><br><strong>${esc(r.schoolUnitName||"未入力")}</strong></p><p><small>塾</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><p>直近テスト：${r.latestUnitTest?`<strong class="elementaryScore">${esc(r.latestUnitTest.score)}点</strong>`:"未登録"}</p><button class="secondaryBtn elementaryStudentProgress" data-subject="${esc(r.subject)}">進行表を見る</button></article>`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">学校の単元テスト</p>${elementaryTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">次回までの宿題</p><button id="openHomeworkArchiveHome" class="ghostBtn">アーカイブ</button></div><div class="homeworkList">${homeworkHtml(data.homework||[],"student")}</div></article></section>`;$("content").querySelectorAll(".elementaryStudentProgress").forEach(b=>b.onclick=()=>openProgress({subject:b.dataset.subject,mode:"view"}));bindHomeworkChecks();bindHomeworkArchiveActions("student");$("openHomeworkArchiveHome")?.addEventListener("click",()=>openView("homeworkArchive"))}
 
 function homeworkDisplayInfo(item) {
   const raw = String(item?.contentText || item?.contentType || "").trim();
@@ -588,7 +597,7 @@ async function renderTeacher(view) {
   if (view === "today") return renderToday();
   if (view === "selectedArchive" && state.activeStudentId) return renderHomeworkArchivePage("teacher", state.activeStudentId);
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
-  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。入力すると自動で検索します。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><div id="searchResults" class="searchResults"><div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div></div></article>${selectedTabsHtml()}`;
+  $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。入力すると自動で検索します。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>小1</option><option>小2</option><option>小3</option><option>小4</option><option>小5</option><option>小6</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><div id="searchResults" class="searchResults"><div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div></div></article>${selectedTabsHtml()}`;
   $("studentSearch").oninput = scheduleStudentSearch;
   $("campusFilter").onchange = scheduleStudentSearch;
   $("gradeFilter").onchange = scheduleStudentSearch;
@@ -662,6 +671,7 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   }
   if (state.activeStudentId !== requestedId) return;
   state.dashboard = data;
+  if (isElementaryGradeValue(data.student?.grade)) return renderElementaryTeacherStudent(data, requestedId);
   const next = data.nextTest;
   const summary = homeworkCompletionSummary(data.homework || []);
   const orderedSubjects = [...new Set([...(data.student.subjects || []), ...SUBJECTS])];
@@ -683,6 +693,11 @@ async function renderTeacherStudent(studentId, { force = false } = {}) {
   bindHomeworkArchiveActions("teacher");
   $("openTeacherHomeworkArchive")?.addEventListener("click", () => { state.activeView = "selectedArchive"; openView("selectedArchive"); });
 }
+
+
+function elemOptions(r){return '<option value="">学校進度を選ぶ</option>'+(r.unitOptions||[]).map(u=>`<option value="${esc(u.unitId)}" ${u.unitId===r.schoolUnitId?"selected":""}>${esc([u.unitNumber,u.unitName].filter(Boolean).join(" "))}</option>`).join('')}
+function renderElementaryTeacherStudent(data,studentId){const rows=data.progress||[], summary=homeworkCompletionSummary(data.homework||[]), teachers=(data.teacherCandidates||[]).map(t=>`<option value="${esc(t.loginId)}" ${String(t.loginId)===String(state.session.loginId)?"selected":""}>${esc(t.name)}</option>`).join('');$("content").innerHTML=`${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide"><strong>授業前に確認</strong><span>①学校はどこまで進んだか　②学校の単元テストは何点だったか</span></article><div class="elementaryTeacherToolbar"><label>担当講師<select id="elementaryLessonTeacher" class="field">${teachers}</select></label><button id="correctElementaryLesson" class="ghostBtn">宿題・進行表を訂正</button></div><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><label class="elementarySchoolSelect">学校の現在地<select class="field elementarySchoolPosition" data-subject="${esc(r.subject)}">${elemOptions(r)}</select><small>選ぶと自動保存</small></label><p><small>塾の現在地</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><p>直近の学校単元テスト：${r.latestUnitTest?`<strong class="elementaryScore">${esc(r.latestUnitTest.score)}点</strong>`:"未登録"}</p><div class="actionRow"><button class="secondaryBtn elementaryOpenProgress" data-subject="${esc(r.subject)}">進行表を開く</button><button class="ghostBtn elementaryTestEntry" data-subject="${esc(r.subject)}">単元テスト入力</button></div></article>`).join('')}</section><section class="cardGrid"><article class="card span7"><p class="cardTitle">学校の単元テスト履歴</p>${elementaryTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span5"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><div class="homeworkList">${homeworkHtml(data.homework||[],"teacher")}</div></article></section>`;bindSelectedTabs();$("content").querySelectorAll(".elementaryOpenProgress").forEach(b=>b.onclick=()=>openProgress({subject:b.dataset.subject,mode:"lesson",studentId,teacherId:$("elementaryLessonTeacher")?.value||state.session.loginId}));$("content").querySelectorAll(".elementarySchoolPosition").forEach(s=>s.onchange=async()=>{if(!s.value)return;s.disabled=true;try{await api("saveSchoolPosition",{studentId,subject:s.dataset.subject,unitId:s.value,recordedDate:dateInputValue(new Date())},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;status("学校進度を保存しました。");await renderTeacherStudent(studentId,{force:true})}catch(e){status(e.message,true);s.disabled=false}});$("content").querySelectorAll(".elementaryTestEntry").forEach(b=>b.onclick=()=>openElementaryUnitTestForm(data,studentId,b.dataset.subject));$("correctElementaryLesson")?.addEventListener("click",()=>openLessonCorrection(studentId));bindTeacherHomeworkChecks();bindHomeworkArchiveActions("teacher");$("openTeacherHomeworkArchive")?.addEventListener("click",()=>{state.activeView="selectedArchive";openView("selectedArchive")})}
+function openElementaryUnitTestForm(data,studentId,preset){const rows=data.progress||[], subjects=(data.elementary?.subjects||rows.map(r=>r.subject));showModal(`<h2>学校の単元テスト入力</h2><form id="elementaryTestForm" class="elementaryTestForm"><label>科目<select id="elementaryTestSubject" class="field">${subjects.map(s=>`<option ${s===preset?"selected":""}>${esc(s)}</option>`).join('')}</select></label><label id="elementaryTestUnitWrap">単元<select id="elementaryTestUnit" class="field"></select></label><label id="elementaryTestUnitFreeWrap" class="hidden">単元名<input id="elementaryTestUnitFree" class="field" maxlength="80"></label><label>テスト日<input id="elementaryTestDate" class="field" type="date" value="${dateInputValue(new Date())}"></label><div class="elementaryScoreInputs"><label>点数<input id="elementaryTestScore" class="field" type="number" min="0" max="999" required></label><label>満点<input id="elementaryTestMax" class="field" type="number" min="1" max="999" value="100"></label></div><label>メモ<input id="elementaryTestMemo" class="field" maxlength="120"></label><output id="elementaryTestStatus"></output><button class="primaryBtn" type="submit">点数を保存</button></form>`);const refresh=()=>{const r=rows.find(x=>x.subject===$("elementaryTestSubject").value)||{}, units=r.unitOptions||[];$("elementaryTestUnit").innerHTML='<option value="">単元を選ぶ</option>'+units.map(u=>`<option value="${esc(u.unitId)}" ${u.unitId===r.schoolUnitId?"selected":""}>${esc([u.unitNumber,u.unitName].filter(Boolean).join(" "))}</option>`).join('');$("elementaryTestUnitWrap").classList.toggle("hidden",!units.length);$("elementaryTestUnitFreeWrap").classList.toggle("hidden",!!units.length)};$("elementaryTestSubject").onchange=refresh;refresh();$("elementaryTestForm").onsubmit=async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button[type="submit"]');btn.disabled=true;try{const units=!$("elementaryTestUnitWrap").classList.contains("hidden");await api("saveElementaryUnitTest",{studentId,subject:$("elementaryTestSubject").value,unitId:units?$("elementaryTestUnit").value:"",unitName:units?"":$("elementaryTestUnitFree").value.trim(),testDate:$("elementaryTestDate").value,score:$("elementaryTestScore").value,maxScore:$("elementaryTestMax").value||100,memo:$("elementaryTestMemo").value.trim()},{silent:true});delete state.teacherStudentCache[String(studentId)];state.dashboard=null;$("modal").dataset.refreshTeacher="true";closeModal();status("学校の単元テストを保存しました。")}catch(err){btn.disabled=false;$("elementaryTestStatus").textContent=err.message}}}
 
 async function renderToday() {
   const data = await api("getTeacherToday");
@@ -900,7 +915,7 @@ async function openProgress(options) {
       const unitDisabled = editable && (!rangeLocked || canOutsideOverride) ? "" : "disabled";
       const outsideAttr = rangeLocked ? "true" : "false";
       const checkHtml = options.mode === "range" ? `<span class="rangeCheckCell"><small>${options.rangeType === "決定" ? "決定範囲" : "予想範囲"}</small><input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" data-outside-locked="${outsideAttr}" ${unitDisabled} ${selected.has(u.unitId) ? "checked" : ""}></span>` : `<input class="unitCheck" type="checkbox" value="${esc(u.unitId)}" data-chapter="${esc(chapter)}" data-outside-locked="${outsideAttr}" ${unitDisabled} ${selected.has(u.unitId) ? "checked" : ""}>`;
-      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""} ${options.mode === "range" ? "rangeSelectable" : ""}" data-unit="${esc(u.unitId)}">${checkHtml}<span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${["英語", "数学"].includes(options.subject) && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : ["英語", "数学"].includes(options.subject) && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
+      return `${groupHeader}<label class="unitRow ${classes} ${selected.has(u.unitId) ? "todaySelected" : ""} ${options.mode === "range" ? "rangeSelectable" : ""}" data-unit="${esc(u.unitId)}">${checkHtml}<span class="unitNumber">${esc(displayNumber)}</span><span class="unitName">${details ? `<small class="unitPrefix">${esc(details)}</small>` : ""}<strong>${esc(u.unitName)}</strong></span><span class="unitMeta">${dateHistory}${todayButton}${schoolButton}${!isElementaryGradeValue(state.dashboard?.student?.grade) && ["英語", "数学"].includes(options.subject) && u.ctResult ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CT ${esc(u.ctResult)}</button>` : !isElementaryGradeValue(state.dashboard?.student?.grade) && ["英語", "数学"].includes(options.subject) && u.previous && options.mode === "lesson" ? `<button type="button" class="ctButton" data-unit="${esc(u.unitId)}">CTを登録</button>` : ""}</span></label>`;
     }).join("");
     const schoolLegend = options.mode === "lesson" ? `<span class="schoolLegendControl"><i style="background:var(--school)"></i><b>学校の現在地</b><small>単元右の🏫を押す</small><input id="schoolPositionDate" type="date" value="${esc(todayValue)}" aria-label="学校進度の確認日"><output id="schoolPositionStatus" aria-live="polite"></output></span>` : '<span><i style="background:var(--school)"></i>学校の現在地</span>';
     const progressActions = options.mode === "lesson"
@@ -1045,10 +1060,11 @@ async function openProgress(options) {
 }
 
 function openHomeworkSetup(options) {
-  const defaults = DEFAULT_HOMEWORK[options.subject] || [];
-  const repeatDefaults = REPEAT_HOMEWORK[options.subject] || defaults;
+  const elementary = isElementaryGradeValue(state.dashboard?.student?.grade);
+  const defaults = elementary ? (ELEMENTARY_HOMEWORK[options.subject] || []) : (DEFAULT_HOMEWORK[options.subject] || []);
+  const repeatDefaults = elementary ? defaults : (REPEAT_HOMEWORK[options.subject] || defaults);
   const correcting = options.mode === "correction";
-  const japaneseOnly = options.subject === "国語";
+  const japaneseOnly = options.subject === "国語" && !elementary;
   const groups = (options.selectedUnits || []).map((unit, index) => {
     const isKeyWords = !japaneseOnly && /key\s*words\s*test/iu.test(`${String(unit.unitName || "")} ${String(unit.unitNumber || "")}`);
     const unitLabel = `${formatProgressUnitNumber(options.subject, unit)} ${unit.unitName || ""}`.trim();
