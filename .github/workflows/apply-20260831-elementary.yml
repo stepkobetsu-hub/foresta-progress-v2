@@ -24,8 +24,23 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Apply elementary patch
-        run: node scripts/apply-20260831-elementary.mjs
+      - name: Apply elementary patch and record failure
+        id: patch
+        shell: bash
+        run: |
+          set +e
+          node scripts/apply-20260831-elementary.mjs > ELEMENTARY_PATCH_RESULT.txt 2>&1
+          code=$?
+          cat ELEMENTARY_PATCH_RESULT.txt
+          echo "exit_code=$code" >> ELEMENTARY_PATCH_RESULT.txt
+          if [ "$code" -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ELEMENTARY_PATCH_RESULT.txt
+            git commit -m "Record elementary patch failure" || true
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            exit "$code"
+          fi
 
       - name: Validate JavaScript and Apps Script syntax
         shell: bash
@@ -42,7 +57,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.js styles.css index.html apps-script/Code.gs
+          git add app.js styles.css index.html apps-script/Code.gs ELEMENTARY_PATCH_RESULT.txt
           if git diff --cached --quiet; then
             echo "No patch changes to commit."
             exit 0
