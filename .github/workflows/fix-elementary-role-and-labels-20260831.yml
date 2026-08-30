@@ -1,0 +1,103 @@
+name: Fix elementary teacher role and labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-elementary-role-and-labels-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch role detection, subject labels and cache versions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          js_path = Path('elementary-supabase.js')
+          css_path = Path('elementary-supabase.css')
+          index_path = Path('index.html')
+
+          js = js_path.read_text()
+          old = '''function readSession() {
+  for (const store of [localStorage, sessionStorage]) {
+    for (const key of ["forestaProgressAuth", "forestaProgressSession"]) {
+      try {
+        const raw = store.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed?.token) return parsed;
+      } catch (_) {}
+    }
+  }
+  return null;
+}'''
+          new = '''function readSession() {
+  const candidates = [];
+  // The active login is normally in sessionStorage. Prefer it over an older
+  // remembered student login left in localStorage on a teacher device.
+  for (const store of [sessionStorage, localStorage]) {
+    for (const key of ["forestaProgressSession", "forestaProgressAuth"]) {
+      try {
+        const raw = store.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed?.token && !candidates.some((item) => item.token === parsed.token)) candidates.push(parsed);
+      } catch (_) {}
+    }
+  }
+  const meta = String(document.getElementById("userMeta")?.textContent || "");
+  const roleHint = meta.includes("講師") ? "teacher" : meta.includes("生徒") ? "student" : meta.includes("管理者") ? "admin" : "";
+  if (roleHint) {
+    const matched = candidates.find((item) => item.role === roleHint);
+    if (matched) return matched;
+  }
+  return candidates[0] || null;
+}'''
+          if old not in js:
+              raise SystemExit('readSession block not found')
+          js = js.replace(old, new, 1)
+          js_path.write_text(js)
+
+          css = css_path.read_text()
+          addition = '''
+/* Elementary top cards: subject names must be instantly recognizable on a tablet. */
+.elementarySubjectCard .subjectPill{font-size:1.35rem!important;line-height:1.15!important;font-weight:900!important;padding:8px 13px!important;border-radius:12px!important;letter-spacing:.02em!important}
+.elementarySubjectCard .elementaryCardHead{align-items:center!important;gap:12px!important}
+@media(max-width:760px){.elementarySubjectCard .subjectPill{font-size:1.18rem!important;padding:7px 11px!important}}
+'''
+          if 'Elementary top cards: subject names' not in css:
+              css += addition
+          css_path.write_text(css)
+
+          index = index_path.read_text()
+          index = index.replace('elementary-supabase.css?v=20260831-1', 'elementary-supabase.css?v=20260831-2')
+          index = index.replace('elementary-supabase.js?v=20260831-1', 'elementary-supabase.js?v=20260831-2')
+          index_path.write_text(index)
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          node --check elementary-supabase.js
+          node --check app.js
+          npm test
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add elementary-supabase.js elementary-supabase.css index.html
+          git commit -m 'Fix elementary teacher role detection and enlarge subject labels'
+          git push origin HEAD:main
