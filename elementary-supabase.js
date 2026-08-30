@@ -8,6 +8,7 @@ let enhancing = false;
 let lastSignature = "";
 let lastDashboard = null;
 let lastElementaryData = null;
+const elementaryDataCache = new Map();
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 const normalizeSubject = (value) => String(value || "").trim() === "数学" ? "算数" : String(value || "").trim();
@@ -120,10 +121,17 @@ async function loadDashboard() {
 }
 
 async function loadElementaryData(force = false) {
-  if (!force && lastElementaryData && String(lastElementaryData.studentId || pageStudentId()) === String(pageStudentId())) return lastElementaryData;
+  const studentId = String(pageStudentId() || "");
+  if (!studentId) return null;
+  if (!force && elementaryDataCache.has(studentId)) {
+    lastElementaryData = elementaryDataCache.get(studentId);
+    return lastElementaryData;
+  }
+  if (!force && lastElementaryData && String(lastElementaryData.studentId || "") === studentId) return lastElementaryData;
   const data = await callElementary("get");
-  data.studentId = pageStudentId();
+  data.studentId = studentId;
   lastElementaryData = data;
+  elementaryDataCache.set(studentId, data);
   return data;
 }
 
@@ -539,7 +547,7 @@ async function enhanceElementary() {
     }
     coreCards.sort((a, b) => CORE.indexOf(cardSubject(a)) - CORE.indexOf(cardSubject(b))).forEach((card) => grid.appendChild(card));
     extraDetails.hidden = !extraBody.querySelector(".elementarySubjectCard");
-    const data = await loadElementaryData(true).catch((error) => { status(error.message, true); return null; });
+    const data = await loadElementaryData(false).catch((error) => { status(error.message, true); return null; });
     if (data) await updateTopCards(dashboard, data);
     await bindTopTestForm(dashboard);
     lastSignature = signature;
