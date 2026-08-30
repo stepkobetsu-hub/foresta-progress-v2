@@ -1,0 +1,29 @@
+name: Enhance Foresta V3 client
+on:
+  push:
+    branches: [agent/foresta-v3-fast-runtime-20260831]
+    paths:
+      - scripts/enhance-fast-v3-client.py
+      - .github/workflows/enhance-fast-v3-client.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/foresta-v3-fast-runtime-20260831
+          fetch-depth: 0
+      - run: python scripts/enhance-fast-v3-client.py
+      - run: node --check app.js
+      - run: node --check elementary-supabase.js
+      - run: npm test
+      - name: Commit V3 client enhancement
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js
+          git commit -m "Add V3 stale while revalidate client cache" || exit 0
+          git push origin HEAD:agent/foresta-v3-fast-runtime-20260831
