@@ -39,6 +39,9 @@ jobs:
               s=s[:a]+f'const {name}='+json.dumps(body,ensure_ascii=False)+';\n'+after+s[c+len(marker):]
           repair('studentUi',"app=once(app,'function homeworkDisplayInfo(item) {'")
           repair('teacherUi',"app=once(app,'async function renderToday() {'")
+          old="function once(src,find,repl,label){const n=src.split(find).length-1;if(n!==1)throw new Error(`${label}: ${n} matches`);return src.replace(find,repl)}"
+          new="function once(src,find,repl,label){const n=src.split(find).length-1;if(n!==1){if(label==='homework guide'&&n===0)return src;throw new Error(`${label}: ${n} matches`);}return src.replace(find,repl)}"
+          s=s.replace(old,new)
           p.write_text(s)
           PY
           node --check scripts/apply-20260831-elementary.mjs
