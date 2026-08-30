@@ -1,5 +1,0 @@
-checked_at=2026-08-30T17:44:01Z
-get={"ok":true,"app":"フォレスタ進捗管理","version":"2.3.1","time":"2026-08-31T02:43:57+09:00"}
-health={"ok":true,"status":"ready","timeZone":"Asia/Tokyo"}
-saveElementaryUnitTest={"ok":false,"message":"処理を実行できません。"}
-saveSchoolPosition={"ok":false,"message":"ログインの有効期限が切れました。もう一度ログインしてください。"}
