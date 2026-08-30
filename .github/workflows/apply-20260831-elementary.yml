@@ -35,7 +35,7 @@ jobs:
               b=a+len(start)
               marker='`;\n'+after
               c=s.index(marker,b)
-              body=s[b:c].replace('\\${','${')
+              body=s[b:c].replace('\\${','${').replace('\\`','`')
               s=s[:a]+f'const {name}='+json.dumps(body,ensure_ascii=False)+';\n'+after+s[c+len(marker):]
           repair('studentUi',"app=once(app,'function homeworkDisplayInfo(item) {'")
           repair('teacherUi',"app=once(app,'async function renderToday() {'")
