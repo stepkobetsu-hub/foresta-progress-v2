@@ -70,8 +70,14 @@ jobs:
 
           elem = elem.replace('status("学校の単元テスト（表・裏）を保存しました。");', 'status("学校の単元テストを保存しました。");')
 
+          old_label_assert = "assert.ok(app.includes('裏面の点数<input id=\"elementaryTopTestBackScore\"'));"
+          new_label_assert = "assert.ok(app.includes('裏面の点数（ない場合は空欄）<input id=\"elementaryTopTestBackScore\"'));"
+          if old_label_assert not in test:
+              raise SystemExit('old top back-score label assertion not found')
+          test = test.replace(old_label_assert, new_label_assert, 1)
+
           old_test = "assert.ok(app.includes('value=\"30\" required'));"
-          new_test = "assert.ok(app.includes('裏面の点数（ない場合は空欄）<input id=\"elementaryTopTestBackScore\"'));\nassert.ok(!app.includes('id=\"elementaryTopTestBackScore\" class=\"field\" type=\"number\" min=\"0\" max=\"999\" value=\"30\" required'));"
+          new_test = "assert.ok(!app.includes('id=\"elementaryTopTestBackScore\" class=\"field\" type=\"number\" min=\"0\" max=\"999\" value=\"30\" required'));"
           if old_test not in test:
               raise SystemExit('old required-back audit assertion not found')
           test = test.replace(old_test, new_test, 1)
