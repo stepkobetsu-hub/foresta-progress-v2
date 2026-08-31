@@ -605,7 +605,7 @@ async function bindTopTestForm(dashboard) {
     const selected = hasGroups ? groups.find((g) => g.unitId === unitEl?.value) : null;
     const unitName = selected?.unitName || form.querySelector("#elementaryTopTestFree")?.value.trim() || "";
     if (!unitName) { if (output) output.textContent = "単元（章）を選んでください。"; return; }
-    if (scoreEl.value === "" || backScoreEl.value === "") { if (output) output.textContent = "表面と裏面の点数を入力してください。"; return; }
+    if (scoreEl.value === "") { if (output) output.textContent = "表面の点数を入力してください。"; return; }
     button.disabled = true;
     if (output) output.textContent = "保存しています…";
     try {
@@ -623,7 +623,7 @@ async function bindTopTestForm(dashboard) {
       if (output) output.textContent = "保存しました。";
       scoreEl.value = "50";
       backScoreEl.value = "30";
-      status("学校の単元テスト（表・裏）を保存しました。");
+      status("学校の単元テストを保存しました。");
       await refreshElementaryScreen();
     } catch (error) {
       if (output) output.textContent = error.message;
@@ -642,7 +642,7 @@ function openModal(html) {
 function openTestDialog({ subject, unit, onSaved }) {
   const dialog = document.createElement("dialog");
   dialog.className = "elementaryUnitTestDialog";
-  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard" novalidate><button type="button" class="elementaryDialogClose" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryFaceScores"><fieldset><legend class="hidden">表面</legend><div class="elementaryScoreInputs"><label>表面の点数<input id="eTestScore" class="field" type="number" min="0" max="999" value="50" autofocus></label><label>表面の満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div></fieldset><fieldset><legend class="hidden">裏面</legend><div class="elementaryScoreInputs"><label>裏面の点数<input id="eTestBackScore" class="field" type="number" min="0" max="999" value="30"></label><label>裏面の満点<input id="eTestBackMax" class="field" type="number" min="1" max="999" value="50"></label></div></fieldset></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><div class="elementaryDialogActions"><button type="button" class="ghostBtn elementaryDialogCancel">キャンセル</button><button id="eTestSave" class="primaryBtn" type="button">保存</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard" novalidate><button type="button" class="elementaryDialogClose" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryFaceScores"><fieldset><legend class="hidden">表面</legend><div class="elementaryScoreInputs"><label>表面の点数<input id="eTestScore" class="field" type="number" min="0" max="999" value="50" autofocus></label><label>表面の満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div></fieldset><fieldset><legend class="hidden">裏面</legend><div class="elementaryScoreInputs"><label>裏面の点数（ない場合は空欄）<input id="eTestBackScore" class="field" type="number" min="0" max="999" value="30"></label><label>裏面の満点<input id="eTestBackMax" class="field" type="number" min="1" max="999" value="50"></label></div></fieldset></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><div class="elementaryDialogActions"><button type="button" class="ghostBtn elementaryDialogCancel">キャンセル</button><button id="eTestSave" class="primaryBtn" type="button">保存</button></div></form>`;
   document.body.appendChild(dialog);
   const close = () => { if (dialog.open) dialog.close(); };
   dialog.querySelector(".elementaryDialogClose").onclick = close;
@@ -655,7 +655,7 @@ function openTestDialog({ subject, unit, onSaved }) {
     const out = dialog.querySelector("#eTestStatus");
     const score = dialog.querySelector("#eTestScore").value;
     const backScore = dialog.querySelector("#eTestBackScore").value;
-    if (score === "" || backScore === "") { out.textContent = "表面と裏面の点数を入力してください。"; return; }
+    if (score === "") { out.textContent = "表面の点数を入力してください。"; return; }
     save.disabled = true;
     out.textContent = "保存しています…";
     try {
@@ -671,7 +671,7 @@ function openTestDialog({ subject, unit, onSaved }) {
         memo: dialog.querySelector("#eTestMemo").value.trim(),
       });
       out.textContent = "保存しました。";
-      status("学校の単元テスト（表・裏）を保存しました。");
+      status("学校の単元テストを保存しました。");
       setTimeout(() => { close(); onSaved?.(); }, 200);
     } catch (error) {
       out.textContent = error.message;

@@ -11,7 +11,7 @@ const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 assert.match(app, /表面の点数<input id="elementaryTopTestScore"[^>]*value="50"/);
 assert.match(app, /表面の満点<input id="elementaryTopTestMax"[^>]*value="100"/);
-assert.match(app, /裏面の点数<input id="elementaryTopTestBackScore"[^>]*value="30"/);
+assert.match(app, /裏面の点数（ない場合は空欄）<input id="elementaryTopTestBackScore"[^>]*value="30"/);
 assert.match(app, /裏面の満点<input id="elementaryTopTestBackMax"[^>]*value="50"/);
 assert.doesNotMatch(colors, /content:"表面"|content:"裏面"/);
 assert.match(styles, /repeat\(4,minmax\(72px,.55fr\)\)/);
