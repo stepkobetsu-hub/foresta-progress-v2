@@ -1,42 +1,37 @@
-name: Apply V3 homework archive and toolbar fix
+name: Verify V3 homework archive and toolbar fix
 
 on:
   push:
     branches: [codex/fix-homework-archive-buttons-20260831]
     paths:
-      - scripts/apply-homework-archive-buttons-fix-20260831.mjs
+      - v3-homework-ui-fix.js
+      - index.html
+      - supabase/functions/foresta-homework-adjust-v3/index.ts
+      - supabase/migrations/202608310006_homework_archive_and_adjustment.sql
       - .github/workflows/apply-homework-archive-buttons-fix-20260831.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
           ref: codex/fix-homework-archive-buttons-20260831
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply fix
-        run: node scripts/apply-homework-archive-buttons-fix-20260831.mjs
       - name: Syntax and tests
         run: |
           node --check app.js
+          node --check v3-homework-ui-fix.js
           node --check elementary-supabase.js
           cp apps-script/Code.gs /tmp/Code.js && node --check /tmp/Code.js
           npm test
+          grep -q '次回宿題を確認・調整' v3-homework-ui-fix.js
+          grep -q 'foresta_v3_homework_snapshot_before_queue' supabase/migrations/202608310006_homework_archive_and_adjustment.sql
+          grep -q 'foresta-homework-adjust-v3' v3-homework-ui-fix.js
           git diff --check
-      - name: Commit implementation
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app.js styles.css index.html supabase/functions/foresta-runtime-v3/index.ts supabase/migrations/202608310006_homework_archive_read_model.sql tests/v3-homework-archive-buttons.test.mjs
-          git commit -m 'Fix V3 homework archive and split teacher actions'
-          git push origin HEAD:codex/fix-homework-archive-buttons-20260831
