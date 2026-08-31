@@ -32,12 +32,21 @@ jobs:
           if(s.includes('function openElementaryHomeworkConfirm')) throw new Error('openElementaryHomeworkConfirm remains');
           fs.writeFileSync('elementary-supabase.js',s);
 
-          const p='tests/role-colors-homework-navigation.test.mjs';
-          let t=fs.readFileSync(p,'utf8');
+          const navTest='tests/role-colors-homework-navigation.test.mjs';
+          let t=fs.readFileSync(navTest,'utf8');
           if(!t.includes('saveElementaryTodayHomework')) {
-            t += `\nassert.ok(!elementary.includes('function saveElementaryTodayHomework'));\nassert.ok(!elementary.includes('function openElementaryHomeworkConfirm'));\nassert.ok(elementary.includes('foresta:open-elementary-homework'));\n`;
+            t += `\nassert.ok(!elementary.includes('function saveElementaryTodayHomework'));\nassert.ok(!elementary.includes('function openElementaryHomeworkConfirm'));\nassert.ok(elementary.includes('foresta:open-elementary-homework'));\nassert.ok(elementary.includes('次回の宿題を確認'));\nassert.ok(elementary.includes('教科書漢字ドリルなど'));\n`;
           }
-          fs.writeFileSync(p,t);
+          fs.writeFileSync(navTest,t);
+
+          const auditTest='tests/elementary-spec-audit.test.mjs';
+          let a=fs.readFileSync(auditTest,'utf8');
+          a=a.replace(/assert\.ok\(elem\.includes\('const otherPlaceholder[^\n]+\n/, '');
+          a=a.replace(/assert\.ok\(elem\.includes\('placeholder="\$\{esc\(otherPlaceholder\)\}"'\)\);\n/, '');
+          if(!a.includes("assert.ok(elem.includes('教科書漢字ドリルなど'))")) {
+            a=a.replace("assert.ok(elem.includes(\"lessonSubjectSelect?.addEventListener('change', syncCustomHomeworkSubject)\"));", "assert.ok(elem.includes(\"lessonSubjectSelect?.addEventListener('change', syncCustomHomeworkSubject)\"));\nassert.ok(elem.includes('教科書漢字ドリルなど'));\nassert.ok(elem.includes('foresta:open-elementary-homework'));\nassert.ok(!elem.includes('function openElementaryHomeworkConfirm'));\nassert.ok(!elem.includes('function saveElementaryTodayHomework')); ");
+          }
+          fs.writeFileSync(auditTest,a);
 
           let index=fs.readFileSync('index.html','utf8');
           index=index.replace(/elementary-supabase\.js\?v=[^\"']+/g,'elementary-supabase.js?v=20260831-homework-nav-clean-1');
@@ -47,11 +56,12 @@ jobs:
         run: |
           node --check elementary-supabase.js
           node --check tests/role-colors-homework-navigation.test.mjs
+          node --check tests/elementary-spec-audit.test.mjs
           npm test
       - name: Commit validated cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add elementary-supabase.js index.html tests/role-colors-homework-navigation.test.mjs
+          git add elementary-supabase.js index.html tests/role-colors-homework-navigation.test.mjs tests/elementary-spec-audit.test.mjs
           git commit -m "Remove unused elementary homework adjustment paths" || exit 0
           git push origin HEAD:main
