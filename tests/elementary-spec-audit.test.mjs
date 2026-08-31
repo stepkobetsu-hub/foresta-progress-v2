@@ -75,3 +75,9 @@ assert.ok(app.includes('class="elementaryHeaderNotice"'));
 assert.ok(app.includes('data.note?.text || "注意事項は登録されていません。"'));
 assert.ok(app.includes('class="adminNoteEditor"'));
 assert.ok(app.includes('class="primaryBtn adminNoteSave"'));
+
+assert.ok(app.includes('adminElementaryProgress'));
+assert.ok(app.includes('foresta:open-elementary-admin-progress'));
+assert.ok(app.includes('const elementaryAdmin = isElementaryGradeValue(s.grade)'));
+assert.ok(app.includes('const adminProgressActions = elementaryAdmin'));
+assert.ok(elem.includes('window.addEventListener("foresta:open-elementary-admin-progress"'));

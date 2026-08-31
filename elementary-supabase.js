@@ -452,6 +452,21 @@ window.addEventListener("foresta:refresh-elementary-homework", async () => {
   }
 });
 
+window.addEventListener("foresta:open-elementary-admin-progress", async (event) => {
+  const detail = event.detail || {};
+  const subject = normalizeSubject(detail.subject);
+  if (!CORE.includes(subject)) return;
+  const previousDashboard = lastDashboard;
+  lastDashboard = { student: { studentId: String(detail.studentId || pageStudentId() || ""), grade: String(detail.grade || ""), englishLevel: String(detail.englishLevel || ""), subjects: Array.isArray(detail.subjects) ? detail.subjects : [] } };
+  try {
+    await showInteractiveProgression(subject, false);
+  } catch (error) {
+    status(error.message, true);
+  } finally {
+    lastDashboard = previousDashboard;
+  }
+});
+
 let homeworkOnlyEnhancing = false;
 async function enhanceElementaryHomeworkOnly() {
   if (homeworkOnlyEnhancing || !document.querySelector(".homeworkList")) return;
