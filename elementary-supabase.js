@@ -321,11 +321,12 @@ async function bindElementaryHomeworkChecks(dashboard) {
 
 function ensureElementaryCustomHomeworkForm(dashboard) {
   if (!isTeacherContext(readSession())) return;
-  if (document.querySelector(".elementaryHomeworkListCard")) return;
   const list = [...document.querySelectorAll('.homeworkList')].find((node) => node.closest('.card')?.querySelector('.cardTitle')?.textContent.includes('宿題'));
   if (!list || list.parentElement.querySelector('.elementaryCustomHomeworkForm')) return;
   const subjects = enrolledSubjects(dashboard);
-  list.insertAdjacentHTML('beforebegin', `<form class="elementaryCustomHomeworkForm"><label>科目<select class="field elementaryCustomHomeworkSubject">${subjects.map((s) => `<option>${esc(s)}</option>`).join('')}</select></label><label class="elementaryCustomHomeworkText">その他の宿題（任意）<input class="field" maxlength="120" placeholder="例：漢字ドリル p.20〜21"></label><button class="ghostBtn" type="submit">追加</button><small>必要なときだけ入力します。</small></form>`);
+  const dedicatedSubject = document.querySelector(".elementaryHomeworkListCard") ? normalizeSubject(document.getElementById("elementaryLessonSubject")?.value || "") : "";
+  const customSubjects = dedicatedSubject && subjects.includes(dedicatedSubject) ? [dedicatedSubject] : subjects;
+  list.insertAdjacentHTML('beforebegin', `<form class="elementaryCustomHomeworkForm"><label>科目<select class="field elementaryCustomHomeworkSubject">${customSubjects.map((s) => `<option>${esc(s)}</option>`).join('')}</select></label><label class="elementaryCustomHomeworkText">その他の宿題（任意）<input class="field" maxlength="120" placeholder="例：漢字ドリル p.20〜21"></label><button class="ghostBtn" type="submit">追加</button><small>必要なときだけ入力します。</small></form>`);
   const form = list.parentElement.querySelector('.elementaryCustomHomeworkForm');
   const customSubject = form.querySelector('.elementaryCustomHomeworkSubject');
   const customInput = form.querySelector('.elementaryCustomHomeworkText input');
@@ -422,8 +423,10 @@ function bindElementaryArchiveActions(dashboard) {
 async function replaceElementaryHomework(dashboard, data) {
   const lists = [...document.querySelectorAll(".homeworkList")];
   if (!lists.length) return;
-  const rows = (data?.homework || []).filter((r) => String(r.series || "").startsWith("ELEMENTARY:"));
-  const signature = rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status, r.archived_at].join("|")).join(";") || "empty";
+  let rows = (data?.homework || []).filter((r) => String(r.series || "").startsWith("ELEMENTARY:"));
+  const dedicatedSubject = document.querySelector(".elementaryHomeworkListCard") ? normalizeSubject(document.getElementById("elementaryLessonSubject")?.value || "") : "";
+  if (dedicatedSubject) rows = rows.filter((r) => normalizeSubject(String(r.series || "").replace(/^ELEMENTARY:/, "")) === dedicatedSubject);
+  const signature = `${dedicatedSubject}|${rows.map((r) => [r.homework_id, r.updated_at, r.student_status, r.teacher_status, r.archived_at].join("|")).join(";") || "empty"}`;
   const unitMap = await elementaryHomeworkUnitMap(dashboard);
   const teacherMode = isTeacherContext(readSession());
   const groups = elementaryHomeworkGroups(rows, unitMap);

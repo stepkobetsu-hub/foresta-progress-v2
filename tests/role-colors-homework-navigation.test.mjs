@@ -17,7 +17,6 @@ assert.match(elementary, /id="elementaryReviewHomework"[^>]*>次回の宿題を�
 assert.match(elementary, /detail: \{ studentId, subject: normalized \}/);
 assert.match(app, /foresta:refresh-elementary-homework/);
 assert.match(elementary, /window\.addEventListener\("foresta:refresh-elementary-homework"/);
-assert.match(elementary, /if \(document\.querySelector\("\.elementaryHomeworkListCard"\)\) return/);
 assert.match(buttons, /function createElementaryReviewButton/);
 assert.match(buttons, /detail: \{ studentId, subject \}/);
 
@@ -38,4 +37,10 @@ assert.ok(!elementary.includes('function saveElementaryTodayHomework'));
 assert.ok(!elementary.includes('function openElementaryHomeworkConfirm'));
 assert.ok(elementary.includes('foresta:open-elementary-homework'));
 assert.ok(elementary.includes('次回の宿題を確認'));
+assert.ok(elementary.includes('教科書漢字ドリルなど'));
+
+assert.ok(!elementary.includes('if (document.querySelector(".elementaryHomeworkListCard")) return;'));
+assert.ok(elementary.includes('const dedicatedSubject = document.querySelector(".elementaryHomeworkListCard") ? normalizeSubject(document.getElementById("elementaryLessonSubject")?.value || "") : "";'));
+assert.ok(elementary.includes('if (dedicatedSubject) rows = rows.filter'));
+assert.ok(elementary.includes('const customSubjects = dedicatedSubject && subjects.includes(dedicatedSubject) ? [dedicatedSubject] : subjects;'));
 assert.ok(elementary.includes('教科書漢字ドリルなど'));
