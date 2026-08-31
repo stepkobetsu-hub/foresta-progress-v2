@@ -13,6 +13,8 @@ create table if not exists public.foresta_v3_sync_status (
 insert into public.foresta_v3_sync_status(sync_name,status) values('timetable','never') on conflict do nothing;
 alter table public.foresta_v3_enrollments enable row level security;
 alter table public.foresta_v3_sync_status enable row level security;
+grant select,insert,update,delete on table public.foresta_v3_enrollments,public.foresta_v3_sync_status to service_role;
+revoke all on table public.foresta_v3_enrollments,public.foresta_v3_sync_status from anon,authenticated;
 create or replace function public.foresta_v3_replace_enrollments(rows jsonb, audit jsonb default '{}') returns integer
 language plpgsql security definer set search_path=public as $$
 declare n integer; bad1180 boolean;
@@ -35,3 +37,4 @@ begin
  return n;
 end $$;
 revoke all on function public.foresta_v3_replace_enrollments(jsonb,jsonb) from public,anon,authenticated;
+grant execute on function public.foresta_v3_replace_enrollments(jsonb,jsonb) to service_role;

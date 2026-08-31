@@ -1,10 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
-const secret=Deno.env.get("FORESTA_SYNC_SECRET")!;
-const exporter=Deno.env.get("FORESTA_TIMETABLE_EXPORT_URL")!;
+const supabaseUrl=Deno.env.get("SUPABASE_URL")||"";
+const serviceRole=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+const secret=Deno.env.get("FORESTA_SYNC_SECRET")||"";
+const exporter=Deno.env.get("FORESTA_TIMETABLE_EXPORT_URL")||"";
+const configured=Boolean(supabaseUrl&&serviceRole&&secret&&exporter);
+const db=createClient(supabaseUrl||"http://127.0.0.1",serviceRole||"missing",{auth:{persistSession:false}});
 const normalize=(v:unknown)=>String(v??"").normalize("NFKC").trim();
 const allowed=new Set(["国語","算数","数学","英語","理科","社会"]);
 Deno.serve(async req=>{
+ if(!configured)return Response.json({ok:false,message:"SERVICE_NOT_CONFIGURED"},{status:503});
  if(req.headers.get("authorization")!==`Bearer ${secret}`)return new Response("unauthorized",{status:401});
  const started=new Date().toISOString();
  await db.from("foresta_v3_sync_status").update({status:"running",last_started_at:started}).eq("sync_name","timetable");

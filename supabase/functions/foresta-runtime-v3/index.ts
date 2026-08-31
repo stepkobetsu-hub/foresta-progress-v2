@@ -1,8 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const SUPABASE_URL=Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const GAS_URL=Deno.env.get("FORESTA_GAS_URL")!;
-const db=createClient(SUPABASE_URL,SERVICE_ROLE,{auth:{persistSession:false}});
+const SUPABASE_URL=Deno.env.get("SUPABASE_URL")||"";
+const SERVICE_ROLE=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+const GAS_URL=Deno.env.get("FORESTA_GAS_URL")||"";
+const configured=Boolean(SUPABASE_URL&&SERVICE_ROLE&&GAS_URL);
+const db=createClient(SUPABASE_URL||"http://127.0.0.1",SERVICE_ROLE||"missing",{auth:{persistSession:false}});
 const reads=new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive","getRangeEditor"]);
 const writes=new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","access-control-allow-origin":"*"}});
@@ -15,10 +16,16 @@ async function session(token:string){
  const response=await fetch(GAS_URL,{method:"POST",headers:{"content-type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"resumeSession",token})});
  const profile=await response.json(); if(!response.ok||profile.ok===false)throw new Error("AUTH_REQUIRED");
  const expires_at=profile.expiresAt||new Date(Date.now()+8*3600e3).toISOString();
- await db.from("foresta_v3_sessions").upsert({token_hash,profile:{...profile,token:undefined},expires_at}); return profile;
+ const now=new Date().toISOString();
+ const user_id=String(profile.studentId||profile.userId||profile.loginId||"");
+ const role=String(profile.role||profile.userType||"student");
+ if(!user_id)throw new Error("INVALID_SESSION_PROFILE");
+ const {error}=await db.from("foresta_v3_sessions").upsert({token_hash,user_id,role,profile:{...profile,token:undefined},expires_at,last_seen_at:now,validated_at:now},{onConflict:"token_hash"});
+ if(error)throw error; return profile;
 }
 Deno.serve(async req=>{
  if(req.method==="OPTIONS")return new Response(null,{headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type"}});
+ if(!configured)return json({ok:false,message:"SERVICE_NOT_CONFIGURED"},503);
  try{
   const body=await req.json(); const profile=await session(String(body.token||""));
   const studentId=String(body.studentId||profile.studentId||profile.loginId||"");
