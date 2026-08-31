@@ -353,6 +353,7 @@ async function bindElementaryHomeworkChecks(dashboard) {
 
 function ensureElementaryCustomHomeworkForm(dashboard) {
   if (!isTeacherContext(readSession())) return;
+  if (document.querySelector(".elementaryHomeworkListCard")) return;
   const list = [...document.querySelectorAll('.homeworkList')].find((node) => node.closest('.card')?.querySelector('.cardTitle')?.textContent.includes('宿題'));
   if (!list || list.parentElement.querySelector('.elementaryCustomHomeworkForm')) return;
   const subjects = enrolledSubjects(dashboard);
@@ -468,6 +469,16 @@ async function replaceElementaryHomework(dashboard, data) {
   bindElementaryArchiveActions(dashboard);
   ensureElementaryCustomHomeworkForm(dashboard);
 }
+
+window.addEventListener("foresta:refresh-elementary-homework", async () => {
+  try {
+    const dashboard = await loadDashboard();
+    const data = await loadElementaryData(true);
+    if (dashboard && data) await replaceElementaryHomework(dashboard, data);
+  } catch (error) {
+    status(error.message, true);
+  }
+});
 
 let homeworkOnlyEnhancing = false;
 async function enhanceElementaryHomeworkOnly() {
@@ -794,19 +805,15 @@ async function showInteractiveProgression(subject, forceTeacher = false, dataOve
       }
     }
 
-    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "今日の塾進度と学校進度は小単元ごと、学校の単元テストは単元（章）ごとに入力します。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div><div class="elementaryProgressActions"><span>今日の進行を選んだあと、宿題を確認して不要なものを外せます。</span><button id="elementaryAdjustHomework" class="primaryBtn" type="button">次回宿題を確認・調整</button></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>学校単元テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`);
-    if (!teacher) return;
+    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "今日の塾進度と学校進度は小単元ごと、学校の単元テストは単元（章）ごとに入力します。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div><div class="elementaryProgressActions"><span>次回の宿題は専用ページで一覧確認できます。</span><button id="elementaryReviewHomework" class="primaryBtn homeworkReviewBtn" type="button">次回の宿題を確認</button></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>学校単元テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`);
     const body = document.getElementById("modalBody");
-    const adjustHomeworkButton = document.getElementById("elementaryAdjustHomework");
-    if (adjustHomeworkButton) adjustHomeworkButton.onclick = async () => {
-      const selectedUnitIds = [...body.querySelectorAll('[data-action="today"]:checked')].map((input) => input.dataset.unit);
-      if (!selectedUnitIds.length) { status("今回進んだ単元を1つ以上選んでください。", true); return; }
-      adjustHomeworkButton.disabled = true;
-      try {
-        const fresh = await loadElementaryData(true);
-        openElementaryHomeworkConfirm({ subject: normalized, units, selectedUnitIds, lessonDate: today, data: fresh, teacher });
-      } catch (error) { status(error.message, true); adjustHomeworkButton.disabled = false; }
+    const reviewHomeworkButton = document.getElementById("elementaryReviewHomework");
+    if (reviewHomeworkButton) reviewHomeworkButton.onclick = () => {
+      const studentId = String(pageStudentId() || "");
+      closeModal();
+      window.dispatchEvent(new CustomEvent("foresta:open-elementary-homework", { detail: { studentId, subject: normalized } }));
     };
+    if (!teacher) return;
     body.querySelectorAll('[data-action="today"]').forEach((input) => input.onchange = async () => {
       input.disabled = true;
       try {

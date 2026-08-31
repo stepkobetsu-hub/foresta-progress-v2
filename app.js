@@ -397,6 +397,7 @@ function renderShell() {
   // This is the source of truth; stored sessions may contain an older student login.
   window.__FORESTA_ACTIVE_SESSION__ = state.session || null;
   window.__FORESTA_ACTIVE_ROLE__ = state.role || "";
+  document.body.dataset.appMode = state.role || "";
   $("topAdminEntry")?.classList.remove("hidden");
   const modeIndicator = $("modeIndicator");
   if (modeIndicator) {
@@ -418,7 +419,8 @@ function renderShell() {
   $("userName").textContent = state.session?.name || "—";
   $("userMeta").textContent = `${state.role === "student" ? "生徒" : state.role === "teacher" ? "講師" : "管理者"} / ${state.session?.campus || state.session?.grade || ""}`;
   $("userInitial").textContent = (state.session?.name || "F").slice(0, 1);
-  $("navItems").innerHTML = navItems().map(([id, label]) => `<button class="navButton ${state.activeView === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("");
+  const activeNavView = state.activeView === "elementaryHomework" || state.activeView === "selectedArchive" ? "selected" : state.activeView === "homeworkArchive" ? "homework" : state.activeView;
+  $("navItems").innerHTML = navItems().map(([id, label]) => `<button class="navButton ${activeNavView === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("");
   $("navItems").querySelectorAll("button").forEach((button) => button.onclick = () => openView(button.dataset.view));
 }
 
@@ -859,6 +861,7 @@ function renderScoresPage(data) {
 async function renderTeacher(view) {
   if (view === "today") return renderToday();
   if (view === "selectedArchive" && state.activeStudentId) return renderHomeworkArchivePage("teacher", state.activeStudentId);
+  if (view === "elementaryHomework" && state.activeStudentId) return renderElementaryTeacherHomework(state.activeStudentId);
   if (view === "selected" && state.activeStudentId) return renderTeacherStudent(state.activeStudentId);
   $("content").innerHTML = `<header class="pageHead"><div><h1>生徒を選ぶ</h1><p>生徒ID・氏名・ふりがな（ひらがな・カタカナ・ローマ字）・教室・学年・学校名から検索できます。入力すると自動で検索します。</p></div></header><article class="card"><div class="teacherSearchGrid"><label><span>検索</span><input id="studentSearch" class="field" placeholder="例：かとう / カトウ / katou / 南城 中2 / ID"></label><label><span>教室</span><select id="campusFilter" class="field"><option value="">すべて</option><option>神領</option><option>大手</option></select></label><label><span>学年</span><select id="gradeFilter" class="field"><option value="">すべて</option><option>小1</option><option>小2</option><option>小3</option><option>小4</option><option>小5</option><option>小6</option><option>中1</option><option>中2</option><option>中3</option></select></label></div><div id="searchResults" class="searchResults"><div class="emptyState">名前などを入力すると、ここに検索結果が表示されます。</div></div></article>${selectedTabsHtml()}`;
   $("studentSearch").oninput = scheduleStudentSearch;
@@ -902,6 +905,53 @@ function selectedTabsHtml() {
   if (!state.selectedStudents.length) return "";
   return `<div class="studentTabsBar"><div class="studentTabs">${state.selectedStudents.map((student) => `<div class="studentTabWrap ${String(student.studentId) === state.activeStudentId ? "active" : ""}"><button class="studentTab" data-id="${esc(student.studentId)}">${esc(student.name)}</button></div>`).join("")}</div><button id="studentChangeButton" class="studentChangeButton selectedStudentChangeButton" type="button">生徒変更</button></div>`;
 }
+
+async function renderElementaryTeacherHomework(studentId) {
+  const requestedId = String(studentId || "");
+  let data = state.teacherStudentCache[requestedId];
+  if (!data) {
+    loading();
+    data = await api("getStudentDashboard", { studentId: requestedId });
+    state.teacherStudentCache[requestedId] = data;
+  }
+  if (state.activeStudentId !== requestedId) return;
+  state.dashboard = data;
+  window.__FORESTA_ACTIVE_DASHBOARD__ = data;
+  const subjects = elementaryCoreRows(data).map((row) => row.subject);
+  const selectedSubject = savedTeacherSubject(requestedId, subjects) || subjects[0] || "算数";
+  rememberTeacherSubject(selectedSubject, requestedId);
+  const subjectOptions = subjects.map((subject) => `<option ${subject === selectedSubject ? "selected" : ""}>${esc(subject)}</option>`).join("");
+  const filteredHomework = (data.homework || []).filter((item) => homeworkSubjectKey(item.subject) === homeworkSubjectKey(selectedSubject));
+  const summary = homeworkCompletionSummary(filteredHomework);
+  $("content").innerHTML = `${selectedTabsHtml()}<header class="pageHead elementaryHomeworkPageHead"><div><span class="elementaryKicker">小学生・宿題</span><h1>次回の宿題</h1><p>${esc(data.student.name)}さん / ${esc(data.student.studentId)} / ${esc(data.student.grade)} / <strong>${esc(selectedSubject)}</strong></p></div><div class="actionRow"><button id="backToElementaryProgress" class="ghostBtn" type="button">← 進行表へ戻る</button><button id="openTeacherHomeworkArchive" class="ghostBtn" type="button">アーカイブ</button></div></header><article class="card elementaryHomeworkOverview"><div><p class="cardTitle">表示する科目</p><select id="elementaryLessonSubject" class="field" aria-label="宿題を表示する科目">${subjectOptions}</select></div><div><p class="cardTitle">確認状況</p><strong>${esc(summary.completed)}/${esc(summary.total)}</strong><small>講師確認済み / 全宿題</small></div></article><section class="card elementaryHomeworkListCard"><div class="homeworkPanelHead"><div><p class="cardTitle">${esc(selectedSubject)}・次回宿題の一覧</p><p class="muted">内容を確認し、生徒の完了状況に応じて講師チェックを付けてください。</p></div></div><div class="homeworkList">${homeworkHtml(filteredHomework,"teacher")}</div></section>`;
+  bindSelectedTabs();
+  bindTeacherHomeworkChecks();
+  bindHomeworkArchiveActions("teacher");
+  $("elementaryLessonSubject").onchange = () => {
+    rememberTeacherSubject($("elementaryLessonSubject").value, requestedId);
+    renderElementaryTeacherHomework(requestedId);
+  };
+  $("backToElementaryProgress").onclick = () => { state.activeView = "selected"; openView("selected"); };
+  $("openTeacherHomeworkArchive").onclick = () => { state.activeView = "selectedArchive"; openView("selectedArchive"); };
+  applyTeacherHomeworkSubjectFilter();
+  window.dispatchEvent(new CustomEvent("foresta:refresh-elementary-homework", { detail: { studentId: requestedId, subject: selectedSubject } }));
+}
+
+window.addEventListener("foresta:open-elementary-homework", (event) => {
+  const subject = String(event.detail?.subject || "").trim();
+  const studentId = String(event.detail?.studentId || "").trim();
+  if (state.role === "student") {
+    state.activeView = "homework";
+    openView("homework");
+    return;
+  }
+  if (state.role !== "teacher") return;
+  if (studentId && state.selectedStudents.some((student) => String(student.studentId) === studentId)) state.activeStudentId = studentId;
+  if (subject) rememberTeacherSubject(subject, state.activeStudentId);
+  state.activeView = "elementaryHomework";
+  persistTeacherLessonSelection();
+  openView("elementaryHomework");
+});
 
 function bindSelectedTabs() {
   $("content").querySelectorAll(".studentTab").forEach((button) => button.onclick = () => activateTeacherStudent(button.dataset.id));
@@ -963,7 +1013,7 @@ function renderElementaryTeacherStudent(data,studentId){
   const rows=elementaryCoreRows(data), summary=homeworkCompletionSummary(data.homework||[]), teachers=(data.teacherCandidates||[]).map(t=>`<option value="${esc(t.loginId)}" ${String(t.loginId)===String(state.session.loginId)?"selected":""}>${esc(t.name)}</option>`).join('');
   const lessonSubjects=rows.map(r=>r.subject);
   const savedLessonSubject=savedTeacherSubject(studentId,lessonSubjects);
-  $("content").innerHTML=`${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide"><strong>授業前に確認</strong><span>①学校はどこまで進んだか　②最近の学校単元テストは何点だったか　③次回のテストはいつありそうか？</span></article>${elementaryTopTestEntryHtml(rows)}<div class="elementaryTeacherToolbar"><label>科目<select id="elementaryLessonSubject" class="field"><option value="">科目を選択してください</option>${lessonSubjects.map(s=>`<option ${s===savedLessonSubject?"selected":""}>${esc(s)}</option>`).join('')}</select></label><label>担当講師<select id="elementaryLessonTeacher" class="field">${teachers}</select></label><button id="correctElementaryLesson" class="ghostBtn homeworkAdjustBtn">次回宿題を確認・調整</button></div><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}" data-lesson-subject="${esc(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><label class="elementarySchoolSelect">学校の現在地<select class="field elementarySchoolPosition" data-subject="${esc(r.subject)}">${elemOptions(r)}</select><small>選ぶと自動保存</small></label><p><small>塾の現在地</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><div class="actionRow"><button class="secondaryBtn elementaryOpenProgress" data-subject="${esc(r.subject)}">進行表を開く</button><button class="ghostBtn elementaryTestEntry" data-subject="${esc(r.subject)}">単元テスト入力</button></div></article>`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">最近の学校単元テスト</p>${elementaryRecentTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><p class="teacherHomeworkSubjectPrompt ${savedLessonSubject?"hidden":""}">科目を選択すると、その科目の宿題だけを表示します。</p><div class="homeworkList">${homeworkHtml(data.homework||[],"teacher")}</div></article></section>`;
+  $("content").innerHTML=`${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide"><strong>授業前に確認</strong><span>①学校はどこまで進んだか　②最近の学校単元テストは何点だったか　③次回のテストはいつありそうか？</span></article>${elementaryTopTestEntryHtml(rows)}<div class="elementaryTeacherToolbar"><label>科目<select id="elementaryLessonSubject" class="field"><option value="">科目を選択してください</option>${lessonSubjects.map(s=>`<option ${s===savedLessonSubject?"selected":""}>${esc(s)}</option>`).join('')}</select></label><label>担当講師<select id="elementaryLessonTeacher" class="field">${teachers}</select></label><button id="correctElementaryLesson" class="ghostBtn homeworkReviewBtn">次回の宿題を確認</button></div><section class="elementaryProgressGrid">${rows.map(r=>`<article class="card elementarySubjectCard ${subjectProgressClass(r.subject)}" data-lesson-subject="${esc(r.subject)}"><div class="elementaryCardHead"><span class="subjectPill">${esc(r.subject)}</span><strong class="elementaryDifference ${elementaryDiffClass(r.differenceUnits)}">${esc(r.differenceLabel||"未設定")}</strong></div><label class="elementarySchoolSelect">学校の現在地<select class="field elementarySchoolPosition" data-subject="${esc(r.subject)}">${elemOptions(r)}</select><small>選ぶと自動保存</small></label><p><small>塾の現在地</small><br><strong>${esc(r.forestaUnitName||"未入力")}</strong></p><div class="actionRow"><button class="secondaryBtn elementaryOpenProgress" data-subject="${esc(r.subject)}">進行表を開く</button><button class="ghostBtn elementaryTestEntry" data-subject="${esc(r.subject)}">単元テスト入力</button></div></article>`).join('')}</section><section class="cardGrid"><article class="card span12"><p class="cardTitle">最近の学校単元テスト</p>${elementaryRecentTestsHtml(data.elementary?.unitTests||[])}</article><article class="card span12"><div class="homeworkPanelHead"><p class="cardTitle">前回宿題</p><button id="openTeacherHomeworkArchive" class="ghostBtn">アーカイブ</button></div><p class="muted">完了 ${summary.completed}/${summary.total}</p><p class="teacherHomeworkSubjectPrompt ${savedLessonSubject?"hidden":""}">科目を選択すると、その科目の宿題だけを表示します。</p><div class="homeworkList">${homeworkHtml(data.homework||[],"teacher")}</div></article></section>`;
   bindSelectedTabs();
   const lessonSubject=$("elementaryLessonSubject");
   const applyLessonSubject=()=>{
@@ -974,6 +1024,11 @@ function renderElementaryTeacherStudent(data,studentId){
   };
   if(lessonSubject){ lessonSubject.onchange=applyLessonSubject; if(lessonSubject.value) rememberTeacherSubject(lessonSubject.value,studentId); }
   applyLessonSubject();
+  $("correctElementaryLesson").onclick=()=>{
+    const subject=lessonSubject?.value||"";
+    if(!subject)return status("科目を選択してください。",true);
+    window.dispatchEvent(new CustomEvent("foresta:open-elementary-homework",{detail:{studentId:String(studentId),subject}}));
+  };
   bindTeacherHomeworkChecks();bindHomeworkArchiveActions("teacher");$("openTeacherHomeworkArchive")?.addEventListener("click",()=>{state.activeView="selectedArchive";openView("selectedArchive")});
 }
 
@@ -1559,6 +1614,7 @@ async function restore() {
 document.querySelectorAll(".roleTab").forEach((tab) => tab.onclick = () => {
   document.querySelectorAll(".roleTab").forEach((item) => { item.classList.toggle("active", item === tab); item.setAttribute("aria-selected", item === tab ? "true" : "false"); });
   state.role = tab.dataset.role;
+  document.body.dataset.loginRole = state.role;
   $("loginIdLabel").textContent = state.role === "student" ? "生徒ID" : "講師ID";
   $("loginId").inputMode = state.role === "student" ? "numeric" : "text";
 });

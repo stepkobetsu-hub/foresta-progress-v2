@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/domain.test.mjs && node tests/gas-pure.test.mjs && node tests/admin-entry.test.mjs && node tests/admin-range-entry.test.mjs && node tests/teacher-experience.test.mjs && node tests/japanese-progress.test.mjs && node tests/v3-cutover.test.mjs && node tests/v3-timetable-sync.test.mjs && node tests/admin-elementary-summary.test.mjs && node tests/elementary-japanese-progress.test.mjs && node tests/final-hotpath.test.mjs && node tests/elementary-spec-audit.test.mjs"
+    "test": "node tests/domain.test.mjs && node tests/gas-pure.test.mjs && node tests/admin-entry.test.mjs && node tests/admin-range-entry.test.mjs && node tests/teacher-experience.test.mjs && node tests/japanese-progress.test.mjs && node tests/v3-cutover.test.mjs && node tests/v3-timetable-sync.test.mjs && node tests/admin-elementary-summary.test.mjs && node tests/elementary-japanese-progress.test.mjs && node tests/final-hotpath.test.mjs && node tests/elementary-spec-audit.test.mjs && node tests/role-colors-homework-navigation.test.mjs"
   }
 }

@@ -118,6 +118,20 @@ function createAdjustButton(subjectGetter) {
   return button;
 }
 
+function createElementaryReviewButton(subjectGetter) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "homeworkReviewBtn";
+  button.textContent = "次回の宿題を確認";
+  button.onclick = () => {
+    const subject = subjectGetter();
+    if (!subject) return notify("科目を選択してください。", true);
+    const studentId = String(dashboard()?.student?.studentId || "");
+    window.dispatchEvent(new CustomEvent("foresta:open-elementary-homework", { detail: { studentId, subject } }));
+  };
+  return button;
+}
+
 function patchMiddleToolbar() {
   const progress = document.getElementById("inputLesson");
   const old = document.getElementById("correctLesson");
@@ -135,8 +149,8 @@ function patchMiddleToolbar() {
 function patchElementaryToolbar() {
   const old = document.getElementById("correctElementaryLesson");
   if (!old) return;
-  const adjust = createAdjustButton(() => document.getElementById("elementaryLessonSubject")?.value || "");
-  adjust.id = "adjustElementaryHomework";
+  const review = createElementaryReviewButton(() => document.getElementById("elementaryLessonSubject")?.value || "");
+  review.id = "reviewElementaryHomework";
   const progress = document.createElement("button");
   progress.type = "button";
   progress.id = "openElementaryProgress";
@@ -149,7 +163,7 @@ function patchElementaryToolbar() {
     if (!target) return notify("この科目の進行表を開けません。", true);
     target.click();
   };
-  old.replaceWith(adjust, progress);
+  old.replaceWith(review, progress);
 }
 
 function patch() {

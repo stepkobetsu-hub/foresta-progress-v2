@@ -14,6 +14,8 @@ assert.ok(elem.includes('const selectedTypes = normalized === "国語" ? ["TODAY
 assert.ok(elem.includes('callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes, other: "" })'));
 assert.ok(elem.includes('callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" })'));
 assert.ok(buttons.includes('次回宿題を確認・調整'));
+assert.ok(buttons.includes('次回の宿題を確認'));
+assert.ok(buttons.includes('foresta:open-elementary-homework'));
 assert.ok(buttons.includes('進行表を開く'));
 assert.ok(!buttons.includes('宿題・進行表を訂正'));
 console.log("final hotpath regression tests: ok");

@@ -8,14 +8,14 @@
   <title>フォレスタ進捗管理</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=20260831-admin-progress-1">
+  <link rel="stylesheet" href="styles.css?v=20260831-role-homework-1">
   <link rel="stylesheet" href="elementary-enhancement.css?v=20260831-savefix-1">
   <link rel="stylesheet" href="elementary-supabase.css?v=20260831-elementary-audit-1">
   <link rel="stylesheet" href="elementary-label-fix.css?v=20260831-1">
   <link rel="stylesheet" href="elementary-teacher-layout-fix.css?v=20260831-1">
   <link rel="stylesheet" href="elementary-test-score-colors.css?v=20260831-2">
 </head>
-<body class="booting">
+<body class="booting" data-login-role="student">
   <div id="bootCover" class="bootCover" role="status" aria-live="polite"><div><span class="spinner"></span><strong>前回の画面を復元しています…</strong><small>ログイン済みの場合はそのまま戻ります</small></div></div>
   <header class="topbar">
     <a class="brand" href="#" aria-label="フォレスタ進捗管理 ホーム"><span class="brandMark">F</span><span>フォレスタ進捗管理</span></a>
@@ -96,9 +96,9 @@
       window.addEventListener('unhandledrejection', () => setTimeout(recover, 0));
     })();
   </script>
-  <script type="module" src="app.js?v=20260831-elementary-audit-2"></script>
+  <script type="module" src="app.js?v=20260831-role-homework-1"></script>
   <script src="elementary-session-fix.js?v=20260831-elementary-recovery-1"></script>
-  <script type="module" src="elementary-supabase.js?v=20260831-elementary-audit-1"></script>
-  <script type="module" src="v3-homework-ui-fix.js?v=20260831-safe-buttons-1"></script>
+  <script type="module" src="elementary-supabase.js?v=20260831-role-homework-1"></script>
+  <script type="module" src="v3-homework-ui-fix.js?v=20260831-role-homework-1"></script>
 </body>
 </html>

@@ -197,3 +197,62 @@
 .teacherHomeworkSubjectPrompt{margin:8px 0 12px;padding:9px 11px;border-radius:10px;background:#fff8df;color:#7a5a00;font-size:.78rem;font-weight:800}
 .elementaryTeacherToolbar label{display:grid;gap:5px;font-size:.78rem;font-weight:800;color:#435b55}.elementaryTeacherToolbar #elementaryLessonSubject{min-width:150px}
 .elementarySubjectCard.lessonSubjectSelected{box-shadow:0 0 0 3px rgba(15,118,110,.16),0 8px 26px rgba(23,32,31,.055)}
+
+/* 2026-08-31: calm, persistent role colors without changing save/danger semantics. */
+body[data-app-mode="student"]{--mode-accent:#3b82c4;--mode-deep:#245f91;--mode-soft:#eaf4fc;--mode-border:#b8d8ee}
+body[data-app-mode="teacher"]{--mode-accent:#168276;--mode-deep:#105e57;--mode-soft:#e8f6f3;--mode-border:#add9d1}
+body[data-app-mode="admin"]{--mode-accent:#75678f;--mode-deep:#514662;--mode-soft:#f1eef6;--mode-border:#cfc6dd}
+body[data-app-mode] .topbar{border-bottom-color:var(--mode-border);box-shadow:0 5px 20px color-mix(in srgb,var(--mode-accent) 10%,transparent)}
+body[data-app-mode] .brandMark{background:var(--mode-accent)}
+body[data-app-mode] .sideNav{background:linear-gradient(165deg,var(--mode-deep),color-mix(in srgb,var(--mode-deep) 78%,#17201f))}
+body[data-app-mode] .sideNav .userBadge>span{color:var(--mode-deep);background:var(--mode-soft)}
+body[data-app-mode] .navButton.active{background:var(--mode-accent);color:#fff;box-shadow:0 4px 13px color-mix(in srgb,var(--mode-deep) 28%,transparent)}
+body[data-app-mode] .navButton:hover:not(.active){background:rgba(255,255,255,.14)}
+body[data-app-mode] .pageHead h1{border-left:5px solid var(--mode-accent);padding-left:11px}
+body[data-app-mode] .progressionButton,
+body[data-app-mode] .elementaryStudentProgress,
+body[data-app-mode] .elementaryOpenProgress,
+body[data-app-mode] .adminProgress{background:var(--mode-soft);color:var(--mode-deep);border:1px solid var(--mode-border)}
+body[data-app-mode] .progressionButton:hover,
+body[data-app-mode] .elementaryStudentProgress:hover,
+body[data-app-mode] .elementaryOpenProgress:hover,
+body[data-app-mode] .adminProgress:hover{background:color-mix(in srgb,var(--mode-soft) 70%,var(--mode-border));border-color:var(--mode-accent)}
+body[data-app-mode="admin"] .adminRangeCta{background:linear-gradient(135deg,#443a55,#67597b 60%,#83749a);box-shadow:0 16px 38px rgba(81,70,98,.24)}
+body[data-app-mode="admin"] .adminRangeKicker{color:#e9e2f3}
+body[data-app-mode="admin"] .adminRangeCta p{color:#f3eff8}
+body[data-app-mode="admin"] .adminRangeCtaButton{color:#514662}
+
+.modeIndicator span[data-mode="student"]{background:#edf6fd;color:#286897}
+.modeIndicator span[data-mode="teacher"]{background:#eaf7f4;color:#11685f}
+.modeIndicator span[data-mode="admin"]{background:#f2eff7;color:#655478}
+.modeIndicator span[data-mode]{border:1px solid transparent;transition:background .16s ease,color .16s ease,transform .16s ease}
+.modeIndicator span[data-mode]:hover{border-color:currentColor;transform:translateY(-1px)}
+.modeIndicator span.active[data-mode="student"]{background:#3b82c4;color:#fff;box-shadow:0 2px 9px rgba(59,130,196,.28)}
+.modeIndicator span.active[data-mode="teacher"]{background:#168276;color:#fff;box-shadow:0 2px 9px rgba(22,130,118,.28)}
+.modeIndicator span.active[data-mode="admin"]{background:#75678f;color:#fff;box-shadow:0 2px 9px rgba(117,103,143,.28)}
+
+.roleTab[data-role="student"]{background:#f2f8fd;color:#39739e}
+.roleTab[data-role="teacher"]{background:#eef8f5;color:#28756c}
+.roleTab[data-role="student"]:hover{background:#deeffb;color:#245f91}
+.roleTab[data-role="teacher"]:hover{background:#dcf2ed;color:#105e57}
+.roleTab.active[data-role="student"]{background:#3b82c4;color:#fff;box-shadow:0 4px 14px rgba(59,130,196,.25)}
+.roleTab.active[data-role="teacher"]{background:#168276;color:#fff;box-shadow:0 4px 14px rgba(22,130,118,.25)}
+body[data-login-role="student"] .loginCard{border-top:5px solid #3b82c4}
+body[data-login-role="teacher"] .loginCard{border-top:5px solid #168276}
+.topAdminEntry{color:#655478;background:#f2eff7;border:1px solid #d7cfe2;border-radius:999px;padding:7px 11px}
+.topAdminEntry:hover{background:#e9e3f1;color:#514662}
+
+.homeworkReviewBtn{border:1px solid #99c8df;border-radius:12px;padding:11px 16px;background:#eaf5fb;color:#205f82;font-weight:900;cursor:pointer;box-shadow:0 4px 12px rgba(32,95,130,.10)}
+.homeworkReviewBtn:hover{background:#d8edf8;border-color:#4f9bc2}
+.elementaryHomeworkOverview{display:grid;grid-template-columns:minmax(220px,1fr) minmax(170px,.6fr);gap:18px;align-items:end;margin-bottom:14px;border-top:4px solid var(--mode-accent,#168276)}
+.elementaryHomeworkOverview>div{display:grid;gap:5px}.elementaryHomeworkOverview .cardTitle{margin:0}.elementaryHomeworkOverview strong{font-size:1.4rem;color:var(--mode-deep,#105e57)}.elementaryHomeworkOverview small{color:var(--muted)}
+.elementaryHomeworkListCard{border-color:var(--mode-border,#add9d1)}
+.elementaryHomeworkListCard .homeworkPanelHead{margin-bottom:12px}.elementaryHomeworkListCard .homeworkPanelHead p{margin:0}.elementaryHomeworkListCard .homeworkPanelHead .muted{margin-top:5px}
+@media(max-width:700px){
+  body[data-app-mode] .pageHead h1{border-left-width:4px;padding-left:9px}
+  .modeIndicator{gap:2px;padding:2px}.modeIndicator span{padding:5px 6px;font-size:.64rem}
+  .elementaryHomeworkOverview{grid-template-columns:1fr}
+  .elementaryHomeworkPageHead .actionRow{display:grid;grid-template-columns:1fr 1fr}.elementaryHomeworkPageHead .actionRow button{width:100%}
+  .homeworkReviewBtn{width:100%;white-space:normal}
+}
+@media(max-width:460px){.brand>span:last-child{display:none}.modeIndicator span{padding:5px;font-size:.61rem}.topbar{padding-inline:12px}.elementaryHomeworkPageHead .actionRow{grid-template-columns:1fr}}
