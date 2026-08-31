@@ -908,7 +908,28 @@ document.addEventListener("click", (event) => {
   }
 }, true);
 
-const observer = new MutationObserver(() => { queueMicrotask(enhanceElementary); queueMicrotask(enhanceElementaryHomeworkOnly); });
-observer.observe(document.documentElement, { childList: true, subtree: true });
-window.addEventListener("DOMContentLoaded", () => { enhanceElementary(); enhanceElementaryHomeworkOnly(); });
-setTimeout(() => { enhanceElementary(); enhanceElementaryHomeworkOnly(); }, 500);
+let elementaryObserverTimer = 0;
+let elementaryObserverRunning = false;
+const elementaryObserverOptions = { childList: true, subtree: true };
+const elementaryObserverTarget = () => document.getElementById("content") || document.documentElement;
+
+async function runElementaryEnhancementsSafely() {
+  if (elementaryObserverRunning) return;
+  elementaryObserverRunning = true;
+  observer.disconnect();
+  try {
+    await enhanceElementary();
+    await enhanceElementaryHomeworkOnly();
+  } finally {
+    elementaryObserverRunning = false;
+    observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
+  }
+}
+
+const observer = new MutationObserver(() => {
+  clearTimeout(elementaryObserverTimer);
+  elementaryObserverTimer = setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 80);
+});
+observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
+window.addEventListener("DOMContentLoaded", () => { runElementaryEnhancementsSafely().catch(() => {}); });
+setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 500);
