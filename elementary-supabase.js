@@ -357,6 +357,7 @@ function ensureElementaryCustomHomeworkForm(dashboard) {
       input.value = '';
       status('その他の宿題を追加しました。');
       await replaceElementaryHomework(dashboard, result);
+      button.disabled = false;
     } catch (error) {
       status(error.message, true);
       button.disabled = false;
