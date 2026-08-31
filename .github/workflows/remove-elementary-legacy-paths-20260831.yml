@@ -1,0 +1,60 @@
+name: Remove elementary legacy paths 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/remove-elementary-legacy-paths-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Remove unreachable elementary legacy code paths
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          let app=fs.readFileSync('app.js','utf8');
+          app=app.replace(/function bindElementaryTopTestEntry\([\s\S]*?\nfunction renderElementaryTeacherStudent/, 'function renderElementaryTeacherStudent');
+          app=app.replace(/\nfunction openElementaryUnitTestForm\([\s\S]*?\n\nasync function renderToday/, '\n\nasync function renderToday');
+          app=app.replace(/\n\s*const elementaryTestButton = options\.mode === "lesson"[\s\S]*?;\n/, '\n      const elementaryTestButton = "";\n');
+          app=app.replace(/\n\s*\$\("modalBody"\)\.querySelectorAll\("\.elementaryUnitTestButton"\)\.forEach\([\s\S]*?\n\s*\}\);/, '');
+          if(app.includes('function bindElementaryTopTestEntry')) throw new Error('legacy top test binder remains');
+          if(app.includes('function openElementaryUnitTestForm')) throw new Error('legacy unit-test dialog remains');
+          if(app.includes('querySelectorAll(".elementaryUnitTestButton")')) throw new Error('legacy unit-test listener remains');
+          fs.writeFileSync('app.js',app);
+
+          const testPath='tests/elementary-spec-audit.test.mjs';
+          let test=fs.readFileSync(testPath,'utf8');
+          if(!test.includes("!app.includes('function bindElementaryTopTestEntry')")) {
+            test=test.replace("assert.ok(!app.includes('bindElementaryTopTestEntry(data,studentId,rows);'));", "assert.ok(!app.includes('bindElementaryTopTestEntry(data,studentId,rows);'));\nassert.ok(!app.includes('function bindElementaryTopTestEntry'));\nassert.ok(!app.includes('function openElementaryUnitTestForm'));\nassert.ok(!app.includes('querySelectorAll(\".elementaryUnitTestButton\")'));");
+          }
+          fs.writeFileSync(testPath,test);
+
+          let index=fs.readFileSync('index.html','utf8');
+          index=index.replace(/app\.js\?v=[^\"']+/g,'app.js?v=20260831-elementary-audit-2');
+          fs.writeFileSync('index.html',index);
+          NODE
+      - name: Validate full suite
+        run: |
+          node --check app.js
+          node --check elementary-supabase.js
+          node --check tests/elementary-spec-audit.test.mjs
+          npm test
+      - name: Commit validated cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html tests/elementary-spec-audit.test.mjs
+          git commit -m "Remove obsolete elementary legacy paths" || exit 0
+          git push origin HEAD:main
