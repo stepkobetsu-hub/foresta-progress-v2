@@ -1,0 +1,42 @@
+.elementaryTopTestForm .elementaryFrontScore,
+.elementaryTopTestForm .elementaryFrontMax{
+  background:#edf6ff!important;
+  border:1px solid #9cc8f5!important;
+  padding:7px 8px!important;
+  border-radius:10px!important;
+  color:#174f86!important;
+}
+.elementaryTopTestForm .elementaryBackScore,
+.elementaryTopTestForm .elementaryBackMax{
+  background:#fff4e8!important;
+  border:1px solid #f0b46b!important;
+  padding:7px 8px!important;
+  border-radius:10px!important;
+  color:#8a4b08!important;
+}
+.elementaryTopTestForm .elementaryFrontScore::before{
+  content:"表面";
+  display:inline-block;
+  margin-right:5px;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#d9ecff;
+  color:#15558f;
+  font-size:.66rem;
+  font-weight:900;
+}
+.elementaryTopTestForm .elementaryBackScore::before{
+  content:"裏面";
+  display:inline-block;
+  margin-right:5px;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#ffe2bf;
+  color:#8a4b08;
+  font-size:.66rem;
+  font-weight:900;
+}
+.elementaryTopTestForm .elementaryFrontScore .field,
+.elementaryTopTestForm .elementaryFrontMax .field{border-color:#84b9ed!important}
+.elementaryTopTestForm .elementaryBackScore .field,
+.elementaryTopTestForm .elementaryBackMax .field{border-color:#e7a653!important}
