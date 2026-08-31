@@ -53,3 +53,7 @@
 
 /* Explicit faint hints requested for elementary free-text homework. */
 .elementaryOtherHomework::placeholder,.elementaryCustomHomeworkText input::placeholder{color:#9aa7a3!important;opacity:1;font-weight:400}
+
+/* Compact elementary unit-test score labels. */
+.elementaryUnitTestDialogCard .elementaryScoreInputs label{font-size:.68rem!important;line-height:1.1!important;white-space:nowrap!important;gap:4px!important}
+.elementaryUnitTestDialogCard .elementaryBackScoreNote{display:block;font-size:.64rem;line-height:1.35;color:#74827e;margin:-2px 0 0;padding:0 2px}
