@@ -1,4 +1,4 @@
-name: Emergency restore elementary 20260831
+name: Finalize elementary recovery 20260831
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  restore:
+  finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -20,63 +20,58 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Patch elementary module safely
+      - name: Restore finalized elementary behavior
         shell: python
         run: |
           from pathlib import Path
           p = Path('elementary-supabase.js')
           s = p.read_text(encoding='utf-8')
-          old = '''const observer = new MutationObserver(() => { queueMicrotask(enhanceElementary); queueMicrotask(enhanceElementaryHomeworkOnly); });
-          observer.observe(document.documentElement, { childList: true, subtree: true });
-          window.addEventListener("DOMContentLoaded", () => { enhanceElementary(); enhanceElementaryHomeworkOnly(); });
-          setTimeout(() => { enhanceElementary(); enhanceElementaryHomeworkOnly(); }, 500);'''
-          new = '''let elementaryObserverTimer = 0;
-          let elementaryObserverRunning = false;
-          const elementaryObserverOptions = { childList: true, subtree: true };
-          const elementaryObserverTarget = () => document.getElementById("content") || document.documentElement;
 
-          async function runElementaryEnhancementsSafely() {
-            if (elementaryObserverRunning) return;
-            elementaryObserverRunning = true;
-            observer.disconnect();
-            try {
-              await enhanceElementary();
-              await enhanceElementaryHomeworkOnly();
-            } finally {
-              elementaryObserverRunning = false;
-              observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
-            }
-          }
+          s = s.replace(
+              'return \'<option value="">大きな単元（章）を選ぶ</option>\' + groups.map',
+              'return \'<option value="">単元（章）を選ぶ</option>\' + groups.map'
+          )
+          s = s.replace(
+              'output.textContent = "大きな単元（章）を選んでください。";',
+              'output.textContent = "単元（章）を選んでください。";'
+          )
 
-          const observer = new MutationObserver(() => {
-            clearTimeout(elementaryObserverTimer);
-            elementaryObserverTimer = setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 80);
-          });
-          observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
-          window.addEventListener("DOMContentLoaded", () => { runElementaryEnhancementsSafely().catch(() => {}); });
-          setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 500);'''
+          old = '''        } else {
+          // Match the middle-school flow: selecting today's progress does not finalize homework yet.
+          // Clear the temporary defaults created by the compatibility endpoint; the confirmation screen
+          // starts with the normal presets checked and the teacher decides what to keep.
+          result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" });
+          status("今日の進行を保存しました。『次回宿題を確認・調整』で宿題を確認して保存してください。");
+        }'''
+          new = '''        } else {
+          const selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"];
+          result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes, other: "" });
+          status(normalized === "国語"
+            ? "今日の進行と『本日の赤×なおし』を宿題に保存しました。"
+            : "今日の進行と『TRYの赤×なおし・エクササイズ』を宿題に保存しました。");
+        }'''
           if old not in s:
-              raise SystemExit('expected old elementary observer block not found')
-          p.write_text(s.replace(old, new), encoding='utf-8')
+              raise SystemExit('expected checked-today block not found')
+          s = s.replace(old, new, 1)
 
-          h = Path('index.html').read_text(encoding='utf-8')
-          needle = '  <script type="module" src="app.js?v=20260831-core-recovery-1"></script>\n'
-          extra = needle + '  <script src="elementary-session-fix.js?v=20260831-elementary-recovery-1"></script>\n  <script type="module" src="elementary-supabase.js?v=20260831-elementary-recovery-1"></script>\n'
-          if needle not in h:
-              raise SystemExit('core app script marker not found')
-          h = h.replace(needle, extra, 1)
-          Path('index.html').write_text(h, encoding='utf-8')
+          if '単元（章）を選ぶ</option>' not in s:
+              raise SystemExit('chapter selector label patch failed')
+          if 'selectedTypes = normalized === "国語"' not in s:
+              raise SystemExit('auto homework patch failed')
+          p.write_text(s, encoding='utf-8')
       - name: Validate
         run: |
-          node --check app.js
           node --check elementary-supabase.js
-          grep -q 'runElementaryEnhancementsSafely' elementary-supabase.js
-          grep -q 'elementary-supabase.js?v=20260831-elementary-recovery-1' index.html
-      - name: Commit recovery
+          node --check v3-homework-ui-fix.js
+          grep -q '単元（章）を選ぶ</option>' elementary-supabase.js
+          grep -q 'selectedTypes = normalized === "国語"' elementary-supabase.js
+          grep -q 'progress.textContent !== "進行表を開く"' v3-homework-ui-fix.js
+          grep -q 'v3-homework-ui-fix.js?v=20260831-safe-buttons-1' index.html
+      - name: Commit finalized recovery
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add elementary-supabase.js index.html
-          git commit -m "Restore elementary progression and saving safely"
+          git add elementary-supabase.js
+          git commit -m "Restore finalized elementary labels and auto homework"
           git push origin HEAD:main
