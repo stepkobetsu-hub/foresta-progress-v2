@@ -5,6 +5,7 @@ on:
     branches: [codex/fix-homework-archive-buttons-20260831]
     paths:
       - scripts/apply-homework-archive-buttons-fix-20260831.mjs
+      - .github/workflows/apply-homework-archive-buttons-fix-20260831.yml
 
 permissions:
   contents: write
