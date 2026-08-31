@@ -1,13 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void};
+
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL")||"";
 const SERVICE_ROLE=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
 const GAS_URL=Deno.env.get("FORESTA_GAS_URL")||"";
 const SYNC_SECRET=Deno.env.get("FORESTA_SYNC_SECRET")||"";
 const configured=Boolean(SUPABASE_URL&&SERVICE_ROLE&&GAS_URL&&SYNC_SECRET);
 const db=createClient(SUPABASE_URL||"http://127.0.0.1",SERVICE_ROLE||"missing",{auth:{persistSession:false}});
-const reads=new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive"]);
+const reads=new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive","getAdminDashboard","getAdminStudents"]);
 const writes=new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const adminWrites=new Set(["saveRange","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const teacherWrites=new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveCt","teacherCheckHomework","saveComment"]);
@@ -47,6 +49,9 @@ async function refreshSnapshots(studentIds:string[],includeGlobal=true){
 
 async function read(profile:Record<string,unknown>,body:Record<string,unknown>){
  const action=String(body.action||""),studentId=String(body.studentId||profile.studentId||profile.loginId||"");
+ if(action==="getAdminDashboard"||action==="getAdminStudents"){
+  if(profile.role!=="admin"||Number(profile.permission||0)<1)throw new Error("FORBIDDEN");const data=await snapshot("__global__",action);if(!data)throw new Error("SNAPSHOT_NOT_READY");return {...data.payload,ok:true,_v3:true,snapshotUpdatedAt:data.updated_at};
+ }
  if(action==="searchStudents"){
   if(profile.role!=="teacher")throw new Error("FORBIDDEN");const data=await snapshot("__global__",action);if(!data)throw new Error("SNAPSHOT_NOT_READY");const q=searchText(body.query),campus=normalize(body.campus),grade=normalize(body.grade);
   const students=(data.payload.students||[]).filter((s:Record<string,unknown>)=>(!campus||normalize(s.campus)===campus)&&(!grade||normalize(s.grade)===grade)&&campusMatches(profile.campus,s.campus)&&(!q||[s.studentId,s.name,s.reading,s.romaji].some(v=>searchText(v).includes(q)))).slice(0,50);return {students,ok:true,_v3:true,snapshotUpdatedAt:data.updated_at};

@@ -359,7 +359,14 @@ function exportSnapshotsV3_(data) {
   requireV3SyncSecret_(data);
   const requested=Array.from(new Set((data.studentIds||[]).map(text_).filter(Boolean))).slice(0,10),snapshots=[];
   withV3ServiceSession_({role:'teacher',loginId:'FORESTA_V3_SYNC',name:'Foresta V3 Sync',campus:'神領・大手町',permission:0},function(token){requested.forEach(function(studentId){Array.prototype.push.apply(snapshots,studentSnapshotsV3_(studentId,token));});});
-  if(data.includeGlobal!==false){snapshots.push({studentId:'__global__',view:'searchStudents',subject:'',payload:{students:getActiveStudents_()}});snapshots.push({studentId:'__global__',view:'getTeacherToday',subject:'',payload:{students:todayScheduledStudents_()}});}
+  if(data.includeGlobal!==false){
+    snapshots.push({studentId:'__global__',view:'searchStudents',subject:'',payload:{students:getActiveStudents_()}});
+    snapshots.push({studentId:'__global__',view:'getTeacherToday',subject:'',payload:{students:todayScheduledStudents_()}});
+    withV3ServiceSession_({role:'admin',loginId:'FORESTA_V3_ADMIN_SYNC',name:'Foresta V3 Admin Sync',campus:'神領・大手町',permission:1},function(token){
+      snapshots.push({studentId:'__global__',view:'getAdminDashboard',subject:'',payload:getAdminDashboard_({adminToken:token},false)});
+      snapshots.push({studentId:'__global__',view:'getAdminStudents',subject:'',payload:getAdminDashboard_({adminToken:token},true)});
+    });
+  }
   return{snapshots:snapshots,studentCount:requested.length,exportedAt:nowIso_()};
 }
 

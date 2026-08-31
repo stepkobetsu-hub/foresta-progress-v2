@@ -45,4 +45,4 @@ assert.ok(elementary.includes('if (dedicatedSubject) rows = rows.filter'));
 assert.ok(elementary.includes('const customSubjects = dedicatedSubject && subjects.includes(dedicatedSubject) ? [dedicatedSubject] : subjects;'));
 assert.ok(elementary.includes('教科書漢字ドリルなど'));
 
-assert.ok(elementary.includes("await replaceElementaryHomework(dashboard, result);\n      button.disabled = false;"));
+assert.match(elementary, /await replaceElementaryHomework\(dashboard, result\);\r?\n\s+button\.disabled = false;/);
