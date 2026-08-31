@@ -42,6 +42,7 @@ jobs:
 
           const p='tests/role-colors-homework-navigation.test.mjs';
           let t=fs.readFileSync(p,'utf8');
+          t=t.split('\n').filter((line) => !line.includes('assert.match(elementary, /if \\(document\\.querySelector\\("\\.elementaryHomeworkListCard"\\)\\) return/);')).join('\n');
           if(!t.includes('dedicatedSubject = document.querySelector(".elementaryHomeworkListCard")')) {
             t += `\nassert.ok(!elementary.includes('if (document.querySelector(".elementaryHomeworkListCard")) return;'));\nassert.ok(elementary.includes('const dedicatedSubject = document.querySelector(".elementaryHomeworkListCard") ? normalizeSubject(document.getElementById("elementaryLessonSubject")?.value || "") : "";'));\nassert.ok(elementary.includes('if (dedicatedSubject) rows = rows.filter'));\nassert.ok(elementary.includes('const customSubjects = dedicatedSubject && subjects.includes(dedicatedSubject) ? [dedicatedSubject] : subjects;'));\nassert.ok(elementary.includes('教科書漢字ドリルなど'));\n`;
           }
