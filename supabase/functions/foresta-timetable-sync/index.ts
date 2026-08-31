@@ -19,8 +19,10 @@ Deno.serve(async req=>{
   const {data,error}=await db.rpc("foresta_v3_replace_enrollments",{rows,audit:{sourceSpreadsheet:"★生徒マスタ202606-",sourceSheet:"時間割マスタ",exportedAt:source.exportedAt,forced:new URL(req.url).searchParams.get("force")==="1"}}); if(error)throw error;
   return Response.json({ok:true,rowCount:data,lastSuccessAt:new Date().toISOString()});
  }catch(error){
+  const errorMessage=error instanceof Error?error.message:typeof error==="object"&&error!==null?JSON.stringify(error):String(error);
+  console.error("foresta-timetable-sync failed",errorMessage);
   const {data:state}=await db.from("foresta_v3_sync_status").select("attempt_count").eq("sync_name","timetable").single(); const attempts=Number(state?.attempt_count||0)+1;
-  await db.from("foresta_v3_sync_status").update({status:"failed",last_failure_at:new Date().toISOString(),attempt_count:attempts,next_retry_at:new Date(Date.now()+Math.min(3600,30*2**Math.min(attempts,7))*1000).toISOString(),last_error:String(error).slice(0,1000)}).eq("sync_name","timetable");
+  await db.from("foresta_v3_sync_status").update({status:"failed",last_failure_at:new Date().toISOString(),attempt_count:attempts,next_retry_at:new Date(Date.now()+Math.min(3600,30*2**Math.min(attempts,7))*1000).toISOString(),last_error:errorMessage.slice(0,1000)}).eq("sync_name","timetable");
   return Response.json({ok:false,message:"Timetable sync failed; last-known-good data retained."},{status:502});
  }
 });
