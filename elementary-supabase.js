@@ -4,6 +4,23 @@ const CORE = ["算数", "国語", "英語"];
 const EXTRA = ["理科", "社会"];
 const ELEMENTARY_API = "https://wisedgcgwaebtkprdhth.supabase.co/functions/v1/elementary-progress";
 let progressionPromise = null;
+const japaneseProgressionPromises = new Map();
+
+async function loadJapaneseProgressions(grade) {
+  const normalizedGrade = normalizeGrade(grade);
+  const gradeNo = normalizedGrade.match(/^小([1-6])$/)?.[1] || "";
+  if (!gradeNo) return [];
+  if (!japaneseProgressionPromises.has(gradeNo)) {
+    const request = fetch(`./data/elementary-japanese-mitsumura-${gradeNo}.json?v=20260831-1`, { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("NEW小学ワーク国語の進行表データを読み込めませんでした。");
+        return r.json();
+      })
+      .then((data) => Array.isArray(data?.units) ? data.units : []);
+    japaneseProgressionPromises.set(gradeNo, request);
+  }
+  return japaneseProgressionPromises.get(gradeNo);
+}
 let enhancing = false;
 let lastSignature = "";
 let lastDashboard = null;
@@ -151,8 +168,9 @@ async function loadProgressions() {
 }
 
 async function unitsFor(subject, grade, level) {
-  const data = await loadProgressions();
   const normalized = normalizeSubject(subject);
+  if (normalized === "国語") return loadJapaneseProgressions(grade);
+  const data = await loadProgressions();
   if (normalized === "算数") return data.math?.[normalizeGrade(grade)] || [];
   if (normalized === "英語") return data.english?.[englishKey(level)] || [];
   return [];
@@ -738,7 +756,7 @@ async function showInteractiveProgression(subject, forceTeacher = false, dataOve
     if (!units.length) throw new Error(normalized === "国語" ? "国語の進行表は、NEW小学ワーク・漢字ドリルの進行表登録後に使用できます。" : "進行表を確認できませんでした。");
     const data = dataOverride || await loadElementaryData(true);
     const summary = summaryFor(normalized, units, data);
-    const source = normalized === "算数" ? "啓林館" : `フォレスタ小学英語 ${englishKey(level) || ""}`.trim();
+    const source = normalized === "算数" ? "啓林館" : normalized === "国語" ? "NEW小学ワーク 光村" : `フォレスタ小学英語 ${englishKey(level) || ""}`.trim();
     const today = todayJst();
     const teacher = forceTeacher || isTeacherContext(session);
     const groups = chapterGroups(units, normalized);
