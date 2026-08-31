@@ -79,12 +79,23 @@
 
   <dialog id="modal" class="modal"><div class="modalFrame"><button id="modalClose" class="modalClose" type="button" aria-label="閉じる">×</button><div id="modalBody"></div></dialog>
   <template id="loadingTemplate"><div class="loadingCard"><span class="spinner"></span><p>読み込み中です…</p></div></template>
-  <script type="module" src="app.js?v=20260831-pr10-rollback-1"></script>
-  <script type="module" src="v3-homework-ui-fix.js?v=20260831-pr10-rollback-1"></script>
-  <script src="foresta-ui-autosave-20260831.js?v=20260831-1"></script>
-  <script src="elementary-session-fix.js?v=20260831-1"></script>
-  <script type="module" src="elementary-supabase.js?v=20260831-pr10-rollback-1"></script>
-  <script src="elementary-teacher-layout-fix.js?v=20260831-1"></script>
-  <script src="elementary-test-score-defaults.js?v=20260831-pr10-rollback-1"></script>
+
+  <script>
+    (() => {
+      const recover = () => {
+        if (!document.body.classList.contains('booting')) return;
+        document.body.classList.remove('booting');
+        document.getElementById('bootCover')?.classList.add('hidden');
+        document.getElementById('workspace')?.classList.add('hidden');
+        document.getElementById('loginView')?.classList.remove('hidden');
+        const msg = document.getElementById('loginMessage');
+        if (msg) msg.textContent = '起動処理を復旧しました。もう一度ログインしてください。';
+      };
+      setTimeout(recover, 3000);
+      window.addEventListener('error', () => setTimeout(recover, 0));
+      window.addEventListener('unhandledrejection', () => setTimeout(recover, 0));
+    })();
+  </script>
+  <script type="module" src="app.js?v=20260831-core-recovery-1"></script>
 </body>
 </html>
