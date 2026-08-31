@@ -1,0 +1,100 @@
+name: Fix elementary optional back score 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-elementary-optional-back-score-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Allow front-only elementary unit tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('app.js')
+          elem_path = Path('elementary-supabase.js')
+          test_path = Path('tests/elementary-spec-audit.test.mjs')
+          index_path = Path('index.html')
+
+          app = app_path.read_text()
+          elem = elem_path.read_text()
+          test = test_path.read_text()
+          index = index_path.read_text()
+
+          old = '最近の学校単元テストを聞き取り、表面・裏面をまとめて入力します。'
+          new = '最近の学校単元テストを入力します。裏面がないテストは表面だけで保存できます。'
+          if old not in app:
+              raise SystemExit('top test guide source not found')
+          app = app.replace(old, new, 1)
+
+          old_back = '<label class="elementaryBackScore">裏面の点数<input id="elementaryTopTestBackScore" class="field" type="number" min="0" max="999" value="30" required></label>'
+          new_back = '<label class="elementaryBackScore">裏面の点数（ない場合は空欄）<input id="elementaryTopTestBackScore" class="field" type="number" min="0" max="999" value="30"></label>'
+          if old_back not in app:
+              raise SystemExit('top back score input source not found')
+          app = app.replace(old_back, new_back, 1)
+
+          old_validation = '    if (scoreEl.value === "" || backScoreEl.value === "") { if (output) output.textContent = "表面と裏面の点数を入力してください。"; return; }'
+          new_validation = '    if (scoreEl.value === "") { if (output) output.textContent = "表面の点数を入力してください。"; return; }'
+          if old_validation not in elem:
+              raise SystemExit('top validation source not found')
+          elem = elem.replace(old_validation, new_validation, 1)
+
+          old_dialog_label = '<label>裏面の点数<input id="eTestBackScore" class="field" type="number" min="0" max="999" value="30"></label>'
+          new_dialog_label = '<label>裏面の点数（ない場合は空欄）<input id="eTestBackScore" class="field" type="number" min="0" max="999" value="30"></label>'
+          if old_dialog_label not in elem:
+              raise SystemExit('dialog back score label source not found')
+          elem = elem.replace(old_dialog_label, new_dialog_label, 1)
+
+          old_dialog_validation = '    if (score === "" || backScore === "") { out.textContent = "表面と裏面の点数を入力してください。"; return; }'
+          new_dialog_validation = '    if (score === "") { out.textContent = "表面の点数を入力してください。"; return; }'
+          if old_dialog_validation not in elem:
+              raise SystemExit('dialog validation source not found')
+          elem = elem.replace(old_dialog_validation, new_dialog_validation, 1)
+
+          elem = elem.replace('status("学校の単元テスト（表・裏）を保存しました。");', 'status("学校の単元テストを保存しました。");')
+
+          old_test = "assert.ok(app.includes('value=\"30\" required'));"
+          new_test = "assert.ok(app.includes('裏面の点数（ない場合は空欄）<input id=\"elementaryTopTestBackScore\"'));\nassert.ok(!app.includes('id=\"elementaryTopTestBackScore\" class=\"field\" type=\"number\" min=\"0\" max=\"999\" value=\"30\" required'));"
+          if old_test not in test:
+              raise SystemExit('old required-back audit assertion not found')
+          test = test.replace(old_test, new_test, 1)
+          test = test.replace("assert.ok(elem.includes('裏面の点数<input id=\"eTestBackScore\"'));", "assert.ok(elem.includes('裏面の点数（ない場合は空欄）<input id=\"eTestBackScore\"'));", 1)
+          if "scoreEl.value === \"\" || backScoreEl.value === \"\"" not in test:
+              test += '\nassert.ok(elem.includes(\'if (scoreEl.value === "")\'));\nassert.ok(!elem.includes(\'scoreEl.value === "" || backScoreEl.value === ""\'));\nassert.ok(elem.includes(\'if (score === "")\'));\nassert.ok(!elem.includes(\'score === "" || backScore === ""\'));\n'
+
+          index = re.sub(r'app\.js\?v=[^\"\']+', 'app.js?v=20260831-optional-back-score-1', index)
+          index = re.sub(r'elementary-supabase\.js\?v=[^\"\']+', 'elementary-supabase.js?v=20260831-optional-back-score-1', index)
+
+          app_path.write_text(app)
+          elem_path.write_text(elem)
+          test_path.write_text(test)
+          index_path.write_text(index)
+          PY
+      - name: Validate
+        run: |
+          node --check app.js
+          node --check elementary-supabase.js
+          node --check tests/elementary-spec-audit.test.mjs
+          npm test
+      - name: Commit validated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js elementary-supabase.js index.html tests/elementary-spec-audit.test.mjs
+          git commit -m "Allow front-only elementary unit test scores" || exit 0
+          git push origin HEAD:main
