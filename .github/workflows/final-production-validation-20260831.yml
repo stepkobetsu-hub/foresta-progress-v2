@@ -25,12 +25,12 @@ jobs:
           node --check elementary-session-fix.js
       - name: Required production behavior
         run: |
-          grep -q '単元（章）を選ぶ</option>' elementary-supabase.js
-          grep -q '教科書漢字ドリルなど' elementary-supabase.js
-          grep -q 'selectedTypes = normalized === "国語" ? \["TODAY_REDO"\] : \["TRY_REDO", "EXERCISE"\]' elementary-supabase.js
-          grep -q 'dataOverride || await loadElementaryData(true)' elementary-supabase.js
-          grep -q 'progress.textContent !== "進行表を開く"' v3-homework-ui-fix.js
-          grep -q '次回宿題を確認・調整' v3-homework-ui-fix.js
-          grep -q 'elementary-supabase.js?v=20260831-final-1' index.html
+          grep -Fq '単元（章）を選ぶ</option>' elementary-supabase.js
+          grep -Fq '教科書漢字ドリルなど' elementary-supabase.js
+          grep -Fq 'selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"]' elementary-supabase.js
+          grep -Fq 'dataOverride || await loadElementaryData(true)' elementary-supabase.js
+          grep -Fq 'progress.textContent !== "進行表を開く"' v3-homework-ui-fix.js
+          grep -Fq '次回宿題を確認・調整' v3-homework-ui-fix.js
+          grep -Fq 'elementary-supabase.js?v=20260831-final-1' index.html
       - name: Full tests
         run: npm test
