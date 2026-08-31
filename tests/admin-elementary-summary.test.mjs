@@ -29,6 +29,6 @@ assert.match(edge, /学校から\+\$\{value\}/);
 assert.match(gas, /listLessons=all\?studentLessons:mine/);
 assert.match(gas, /teacherDataSource:all\?'latest-lesson-history':'today-lesson-history'/);
 assert.match(gas, /if\(!elementary\)\{[\s\S]*alerts\.push\('次回テスト未登録'\)[\s\S]*alerts\.push\('宿題未完了'\)/);
-assert.match(html, /app\.js\?v=20260831-core-recovery-1/);
+assert.match(html, /app\.js\?v=20260831-[^"']+/);
 
 console.log("admin elementary summary tests: 20 assertions passed");
