@@ -1,0 +1,101 @@
+name: Fix elementary note and admin layout 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-elementary-note-admin-layout-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Add elementary note and compact admin note editor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('app.js')
+          styles_path = Path('styles.css')
+          teacher_css_path = Path('elementary-teacher-layout-fix.css')
+          index_path = Path('index.html')
+          audit_path = Path('tests/elementary-spec-audit.test.mjs')
+
+          app = app_path.read_text()
+          styles = styles_path.read_text()
+          teacher_css = teacher_css_path.read_text()
+          index = index_path.read_text()
+          audit = audit_path.read_text()
+
+          old_header = '${selectedTabsHtml()}<header class="pageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div></header><article class="card elementaryTeacherGuide">'
+          new_header = '${selectedTabsHtml()}<header class="pageHead elementaryStudentPageHead"><div><span class="elementaryKicker">小学生</span><h1>${esc(data.student.name)}</h1><p>${esc(data.student.studentId)} / ${esc(data.student.campus)} / ${esc(data.student.grade)} / ${esc(data.student.school||"学校未登録")}</p></div><aside class="elementaryHeaderNotice" id="elementaryHeaderNotice" role="button" tabindex="0"><span>指導上の注意事項</span><strong>${esc(data.note?.text || "注意事項は登録されていません。")}</strong></aside></header><article class="card elementaryTeacherGuide">'
+          if old_header not in app:
+              raise SystemExit('elementary teacher header source not found')
+          app = app.replace(old_header, new_header, 1)
+
+          bind_anchor = '  bindSelectedTabs();\n'
+          bind_insert = '''  bindSelectedTabs();\n  const elementaryNotice = $("elementaryHeaderNotice");\n  if (elementaryNotice) {\n    const openElementaryNotice = () => showModal(`<h2>指導上の注意事項</h2><p>${esc(data.note?.text || "登録されていません。")}</p><small>${data.note?.updatedAt ? `更新 ${fmtDateTime(data.note.updatedAt)}` : ""}</small>`);\n    elementaryNotice.onclick = openElementaryNotice;\n    elementaryNotice.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openElementaryNotice(); } };\n  }\n'''
+          # only the bindSelectedTabs immediately following renderElementaryTeacherStudent
+          pos = app.find('function renderElementaryTeacherStudent')
+          if pos < 0:
+              raise SystemExit('renderElementaryTeacherStudent not found')
+          bind_pos = app.find(bind_anchor, pos)
+          if bind_pos < 0:
+              raise SystemExit('elementary bindSelectedTabs anchor not found')
+          app = app[:bind_pos] + app[bind_pos:].replace(bind_anchor, bind_insert, 1)
+
+          old_admin = '<textarea id="adminNote" class="field" rows="3" placeholder="新しい注意事項"></textarea><button id="saveAdminNote" class="primaryBtn" style="margin-top:8px">履歴を残して更新</button>'
+          new_admin = '<div class="adminNoteEditor"><textarea id="adminNote" class="field" rows="3" placeholder="新しい注意事項"></textarea><button id="saveAdminNote" class="primaryBtn adminNoteSave" type="button">履歴を残して更新</button></div>'
+          if old_admin not in app:
+              raise SystemExit('admin note editor source not found')
+          app = app.replace(old_admin, new_admin, 1)
+
+          elementary_css = '''\n/* Compact guidance note beside the elementary student name. */\n.elementaryStudentPageHead{align-items:stretch!important}\n.elementaryHeaderNotice{margin-left:auto;width:min(390px,42%);min-width:260px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 13px;border:1px solid #d9e6e2;border-radius:14px;background:#f8fcfa;cursor:pointer;overflow:hidden}\n.elementaryHeaderNotice span{font-size:.68rem;font-weight:900;color:#527068}\n.elementaryHeaderNotice strong{font-size:.82rem;line-height:1.45;color:#203f39;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.elementaryHeaderNotice:hover{border-color:#88beb2;background:#f1faf7}\n@media(max-width:760px){.elementaryStudentPageHead{display:block!important}.elementaryHeaderNotice{width:100%;min-width:0;margin:12px 0 0}}\n'''
+          if 'Compact guidance note beside the elementary student name.' not in teacher_css:
+              teacher_css += elementary_css
+
+          admin_css = '''\n/* Wider admin guidance-note editor with a smaller save button. */\n.adminNoteEditor{display:flex;align-items:flex-end;gap:8px;width:100%}\n.adminNoteEditor #adminNote{flex:1 1 auto;min-width:0;width:100%;resize:vertical}\n.adminNoteEditor .adminNoteSave{flex:0 0 auto;padding:7px 10px!important;font-size:.74rem!important;line-height:1.15!important;white-space:nowrap;min-height:36px}\n@media(max-width:620px){.adminNoteEditor{align-items:stretch;flex-direction:column}.adminNoteEditor .adminNoteSave{align-self:flex-end}}\n'''
+          if 'Wider admin guidance-note editor with a smaller save button.' not in styles:
+              styles += admin_css
+
+          if "elementaryHeaderNotice" not in audit:
+              audit += '''\nassert.ok(app.includes('class="elementaryHeaderNotice"'));\nassert.ok(app.includes('data.note?.text || "注意事項は登録されていません。"'));\nassert.ok(app.includes('class="adminNoteEditor"'));\nassert.ok(app.includes('class="primaryBtn adminNoteSave"'));\n'''
+
+          index = re.sub(r'app\\.js\\?v=[^\"\']+', 'app.js?v=20260831-note-layout-1', index)
+          index = re.sub(r'styles\\.css\\?v=[^\"\']+', 'styles.css?v=20260831-note-layout-1', index)
+          index = re.sub(r'elementary-teacher-layout-fix\\.css\\?v=[^\"\']+', 'elementary-teacher-layout-fix.css?v=20260831-note-layout-1', index)
+
+          app_path.write_text(app)
+          styles_path.write_text(styles)
+          teacher_css_path.write_text(teacher_css)
+          index_path.write_text(index)
+          audit_path.write_text(audit)
+          PY
+      - name: Validate
+        run: |
+          node --check app.js
+          node --check tests/elementary-spec-audit.test.mjs
+          grep -F 'class="elementaryHeaderNotice"' app.js
+          grep -F 'class="adminNoteEditor"' app.js
+          grep -F 'Wider admin guidance-note editor with a smaller save button.' styles.css
+          grep -F 'Compact guidance note beside the elementary student name.' elementary-teacher-layout-fix.css
+          npm test
+          git diff --check
+      - name: Commit validated fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js styles.css elementary-teacher-layout-fix.css index.html tests/elementary-spec-audit.test.mjs
+          git commit -m "Show elementary guidance note and widen admin editor" || exit 0
+          git push origin HEAD:main
