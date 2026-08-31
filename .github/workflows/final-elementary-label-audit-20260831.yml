@@ -1,0 +1,59 @@
+name: Final elementary label audit 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/final-elementary-label-audit-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fix chapter labels and remove unused helper
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          let s=fs.readFileSync('elementary-supabase.js','utf8');
+          s=s.replace(/\nfunction elementaryHomeworkPresetChoices\([\s\S]*?\n\nasync function showInteractiveProgression/, '\nasync function showInteractiveProgression');
+          const old='      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>第${esc(group.key)}章</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : ""}</td>`}</tr>`;';
+          const neu='      const groupLabel = /^\\d+$/u.test(String(group.key || "")) ? `第${group.key}章` : String(group.key || "");\n      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>${esc(groupLabel)}</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : ""}</td>`}</tr>`;';
+          if(!s.includes(old)) throw new Error('interactive chapter row source not found');
+          s=s.replace(old,neu);
+          if(s.includes('function elementaryHomeworkPresetChoices')) throw new Error('unused homework preset helper remains');
+          if(s.includes('<span>第${esc(group.key)}章</span>')) throw new Error('legacy chapter rendering remains');
+          fs.writeFileSync('elementary-supabase.js',s);
+
+          const p='tests/elementary-spec-audit.test.mjs';
+          let t=fs.readFileSync(p,'utf8');
+          if(!t.includes("groupLabel = /^\\\\d+$/u.test")) {
+            t += `\nassert.ok(elem.includes('const groupLabel = /^\\\\d+$/u.test(String(group.key || ""))'));\nassert.ok(!elem.includes('<span>第\${esc(group.key)}章</span>'));\nassert.ok(!elem.includes('function elementaryHomeworkPresetChoices'));\n`;
+          }
+          fs.writeFileSync(p,t);
+
+          let index=fs.readFileSync('index.html','utf8');
+          index=index.replace(/elementary-supabase\.js\?v=[^\"']+/g,'elementary-supabase.js?v=20260831-final-label-audit-1');
+          fs.writeFileSync('index.html',index);
+          NODE
+      - name: Validate
+        run: |
+          node --check elementary-supabase.js
+          node --check tests/elementary-spec-audit.test.mjs
+          npm test
+      - name: Commit validated audit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add elementary-supabase.js index.html tests/elementary-spec-audit.test.mjs
+          git commit -m "Fix elementary summary chapter labels" || exit 0
+          git push origin HEAD:main
