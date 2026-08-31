@@ -340,6 +340,13 @@ function ensureElementaryCustomHomeworkForm(dashboard) {
   const subjects = enrolledSubjects(dashboard);
   list.insertAdjacentHTML('beforebegin', `<form class="elementaryCustomHomeworkForm"><label>科目<select class="field elementaryCustomHomeworkSubject">${subjects.map((s) => `<option>${esc(s)}</option>`).join('')}</select></label><label class="elementaryCustomHomeworkText">その他の宿題（任意）<input class="field" maxlength="120" placeholder="例：漢字ドリル p.20〜21"></label><button class="ghostBtn" type="submit">追加</button><small>必要なときだけ入力します。</small></form>`);
   const form = list.parentElement.querySelector('.elementaryCustomHomeworkForm');
+  const customSubject = form.querySelector('.elementaryCustomHomeworkSubject');
+  const customInput = form.querySelector('.elementaryCustomHomeworkText input');
+  const updateCustomHomeworkPlaceholder = () => {
+    customInput.placeholder = normalizeSubject(customSubject.value) === "国語" ? "教科書漢字ドリルなど" : "例：漢字ドリル p.20〜21";
+  };
+  customSubject.addEventListener('change', updateCustomHomeworkPlaceholder);
+  updateCustomHomeworkPlaceholder();
   form.onsubmit = async (event) => {
     event.preventDefault();
     const input = form.querySelector('.elementaryCustomHomeworkText input');
