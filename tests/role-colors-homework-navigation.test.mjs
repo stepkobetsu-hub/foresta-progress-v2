@@ -28,6 +28,8 @@ for (const mode of ["student", "teacher", "admin"]) {
 assert.match(styles, /\.roleTab\[data-role="student"\]:hover/);
 assert.match(styles, /\.roleTab\.active\[data-role="teacher"\]/);
 assert.match(styles, /@media\(max-width:700px\)/);
+assert.match(styles, /\.workspace\{grid-template-columns:minmax\(0,1fr\);width:100%;min-width:0\}/);
+assert.match(styles, /\.sideNav nav\{min-width:0;max-width:100%;overflow-x:auto\}/);
 assert.match(styles, /\.danger/);
 
 console.log("role colors and elementary homework navigation tests: ok");

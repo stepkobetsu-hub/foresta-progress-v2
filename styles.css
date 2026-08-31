@@ -255,4 +255,11 @@ body[data-login-role="teacher"] .loginCard{border-top:5px solid #168276}
   .elementaryHomeworkPageHead .actionRow{display:grid;grid-template-columns:1fr 1fr}.elementaryHomeworkPageHead .actionRow button{width:100%}
   .homeworkReviewBtn{width:100%;white-space:normal}
 }
+@media(max-width:860px){
+  .workspace{grid-template-columns:minmax(0,1fr);width:100%;min-width:0}
+  .sideNav{min-width:0;max-width:100%;overflow:hidden}
+  .sideNav nav{min-width:0;max-width:100%;overflow-x:auto}
+  .sideNav .navButton{flex:0 0 auto}
+  .contentPane{min-width:0;max-width:100%}
+}
 @media(max-width:460px){.brand>span:last-child{display:none}.modeIndicator span{padding:5px;font-size:.61rem}.topbar{padding-inline:12px}.elementaryHomeworkPageHead .actionRow{grid-template-columns:1fr}}
