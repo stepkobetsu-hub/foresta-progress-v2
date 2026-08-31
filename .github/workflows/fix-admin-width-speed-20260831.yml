@@ -23,6 +23,15 @@ jobs:
           node-version: 20
       - name: Apply admin width and speed fix
         run: python3 .github/scripts/fix-admin-width-speed-20260831.py
+      - name: Fix audit assertion quoting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/elementary-spec-audit.test.mjs')
+          s = p.read_text()
+          s = s.replace("assert.ok(app.includes('Promise.all([api(action), elementaryPromise])');", "assert.ok(app.includes(\"Promise.all([api(action), elementaryPromise])\"));")
+          p.write_text(s)
+          PY
       - name: Validate
         run: |
           node --check app.js
