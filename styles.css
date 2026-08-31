@@ -269,3 +269,11 @@ body[data-login-role="teacher"] .loginCard{border-top:5px solid #168276}
 .adminNoteEditor #adminNote{flex:1 1 auto;min-width:0;width:100%;resize:vertical}
 .adminNoteEditor .adminNoteSave{flex:0 0 auto;padding:7px 10px!important;font-size:.74rem!important;line-height:1.15!important;white-space:nowrap;min-height:36px}
 @media(max-width:620px){.adminNoteEditor{align-items:stretch;flex-direction:column}.adminNoteEditor .adminNoteSave{align-self:flex-end}}
+
+/* Compact admin student list rows. */
+.adminStudentsTable{min-width:1380px!important;table-layout:auto}
+.adminStudentsTable th,.adminStudentsTable td{vertical-align:top}
+.adminStudentsTable th:nth-child(7),.adminStudentsTable td:nth-child(7){min-width:92px;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important}
+.adminStudentsTable th:nth-child(13),.adminStudentsTable td:nth-child(13){min-width:160px;max-width:190px;white-space:normal!important;line-height:1.35!important;word-break:normal!important;overflow-wrap:anywhere!important}
+.adminStudentsTable th:nth-child(18),.adminStudentsTable td:nth-child(18){min-width:92px;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important}
+.adminStudentsTable .adminStudentRow td{padding-top:9px;padding-bottom:9px}

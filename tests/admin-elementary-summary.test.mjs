@@ -33,3 +33,8 @@ assert.match(html, /app\.js\?v=20260831-[^"']+/);
 
 console.log("admin elementary summary tests: 20 assertions passed");
 assert.ok(app.includes('※裏面がないテストは、裏面の点数・満点は空欄でかまいません。'));
+
+assert.ok(app.includes('class="adminStudentsTable"'));
+assert.match(styles, /\.adminStudentsTable th:nth-child\(7\),\.adminStudentsTable td:nth-child\(7\)\{[^}]*white-space:nowrap/);
+assert.match(styles, /\.adminStudentsTable th:nth-child\(13\),\.adminStudentsTable td:nth-child\(13\)\{[^}]*min-width:160px[^}]*white-space:normal/);
+assert.match(styles, /\.adminStudentsTable th:nth-child\(18\),\.adminStudentsTable td:nth-child\(18\)\{[^}]*white-space:nowrap/);
