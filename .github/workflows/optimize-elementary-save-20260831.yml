@@ -1,0 +1,37 @@
+name: Optimize elementary save 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/optimize-elementary-save-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply save optimization
+        run: node scripts/optimize-elementary-save-20260831.mjs
+      - name: Validate
+        run: |
+          node --check elementary-supabase.js
+          node --check v3-homework-ui-fix.js
+          grep -q 'dataOverride || await loadElementaryData(true)' elementary-supabase.js
+          grep -q 'await showInteractiveProgression(normalized, teacher, result);' elementary-supabase.js
+      - name: Commit optimization
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add elementary-supabase.js
+          git commit -m "Avoid redundant elementary save refetches"
+          git push origin HEAD:main
