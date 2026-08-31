@@ -88,7 +88,7 @@ assert.match(app, /function renderAdminStudentSearchResults/);
 assert.match(app, /全在籍生徒から検索し、選ぶと管理者詳細を開きます/);
 assert.match(gas, /directory:directory/);
 assert.match(gas, /campuses:\['神領','大手町'\]/);
-assert.match(gas, /grades:\['中1','中2','中3'\]/);
+assert.match(gas, /grades:Array\.from\(new Set\(allActiveStudents\.map/);
 assert.match(gas, /schools:schools/);
 assert.match(app, /filterOptions\.campuses/);
 assert.match(app, /filterOptions\.schools/);
