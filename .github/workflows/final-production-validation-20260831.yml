@@ -1,0 +1,36 @@
+name: Final production validation 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/final-production-validation-20260831.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: JavaScript syntax
+        run: |
+          node --check app.js
+          node --check elementary-supabase.js
+          node --check v3-homework-ui-fix.js
+          node --check elementary-session-fix.js
+      - name: Required production behavior
+        run: |
+          grep -q '単元（章）を選ぶ</option>' elementary-supabase.js
+          grep -q '教科書漢字ドリルなど' elementary-supabase.js
+          grep -q 'selectedTypes = normalized === "国語" ? \["TODAY_REDO"\] : \["TRY_REDO", "EXERCISE"\]' elementary-supabase.js
+          grep -q 'dataOverride || await loadElementaryData(true)' elementary-supabase.js
+          grep -q 'progress.textContent !== "進行表を開く"' v3-homework-ui-fix.js
+          grep -q '次回宿題を確認・調整' v3-homework-ui-fix.js
+          grep -q 'elementary-supabase.js?v=20260831-final-1' index.html
+      - name: Full tests
+        run: npm test
