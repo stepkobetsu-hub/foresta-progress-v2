@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const app=fs.readFileSync(new URL("../app.js",import.meta.url),"utf8");
+const elem=fs.readFileSync(new URL("../elementary-supabase.js",import.meta.url),"utf8");
+const buttons=fs.readFileSync(new URL("../v3-homework-ui-fix.js",import.meta.url),"utf8");
+assert.match(app,/replace\(\/\[ァ-ヶ\]\/g/);
+assert.match(app,/student.reading/);
+assert.match(app,/student.romaji/);
+assert.ok(app.includes('FAST_RUNTIME_WRITE_ACTIONS.has(action) ? "高速保存中…" : "高速読込中…"'));
+assert.ok(elem.includes('memo: text, assignedDate: todayJst()'));
+assert.ok(elem.includes('"教科書漢字ドリルなど"'));
+assert.ok(elem.includes('if (normalized === "国語") return loadJapaneseProgressions(grade);'));
+assert.ok(elem.includes('if (normalized === "国語") return ["本日の赤×なおし"]'));
+assert.ok(elem.includes('if (normalized === "算数" || normalized === "英語") return ["TRYの赤×なおし", "エクササイズ"]'));
+assert.ok(buttons.includes('次回宿題を確認・調整'));
+assert.ok(buttons.includes('進行表を開く'));
+assert.ok(!buttons.includes('宿題・進行表を訂正'));
+console.log("final hotpath regression tests: ok");

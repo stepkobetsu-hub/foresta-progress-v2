@@ -373,7 +373,7 @@ function ensureElementaryCustomHomeworkForm(dashboard) {
     const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      const result = await callElementary('addCustomHomework', { subject: form.querySelector('.elementaryCustomHomeworkSubject').value, customText: text, assignedDate: todayJst() });
+      const result = await callElementary('addCustomHomework', { subject: form.querySelector('.elementaryCustomHomeworkSubject').value, memo: text, assignedDate: todayJst() });
       result.studentId = String(pageStudentId() || "");
       elementaryDataCache.set(result.studentId, result);
       lastElementaryData = result;

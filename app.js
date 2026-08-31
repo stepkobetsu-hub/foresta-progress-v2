@@ -152,7 +152,7 @@ async function api(action, payload = {}, { silent = false, forceNetwork = false 
       return result;
     } finally { clearTimeout(timer); }
   };
-  if (!silent) status(FAST_RUNTIME_ENABLED && usingFastRuntimeFor(action) ? "高速保存中…" : "読み込み中…");
+  if (!silent) status(FAST_RUNTIME_ENABLED && usingFastRuntimeFor(action) ? (FAST_RUNTIME_WRITE_ACTIONS.has(action) ? "高速保存中…" : "高速読込中…") : "読み込み中…");
   const endpoint = apiEndpointFor(action);
   try {
     const result = await attempt(endpoint, endpoint === CONFIG.fastRuntimeApiUrl);
