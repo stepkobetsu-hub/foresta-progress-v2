@@ -27,9 +27,11 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const path = 'tests/elementary-japanese-progress.test.mjs';
-          let s = fs.readFileSync(path, 'utf8');
-          s = s.replace('assert.match(elem, /normalized === "国語"\\) return loadJapaneseProgressions\\(grade\\)/);', 'assert.ok(elem.includes(\'if (normalized === "国語") return loadJapaneseProgressions(grade);\'));');
-          fs.writeFileSync(path, s);
+          const lines = fs.readFileSync(path, 'utf8').split('\n');
+          const fixed = lines.map((line) => line.includes('assert.match(elem, /normalized ===')
+            ? 'assert.ok(elem.includes(\'if (normalized === "国語") return loadJapaneseProgressions(grade);\'));'
+            : line);
+          fs.writeFileSync(path, fixed.join('\n'));
           NODE
       - name: Validate JavaScript
         run: |
