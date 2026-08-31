@@ -1,0 +1,76 @@
+name: Fix admin table density 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-admin-table-density-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Compact admin student rows
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          app_path = Path('app.js')
+          styles_path = Path('styles.css')
+          index_path = Path('index.html')
+          test_path = Path('tests/admin-elementary-summary.test.mjs')
+
+          app = app_path.read_text()
+          styles = styles_path.read_text()
+          index = index_path.read_text()
+          test = test_path.read_text()
+
+          old = '<div class="card"><div class="tableWrap"><table><thead><tr><th>生徒</th><th>ID</th><th>教室</th><th>学年</th><th>学校</th><th>予定科目</th><th>担当講師</th><th>入力科目</th><th>学習単元</th><th>残り</th><th>残り回数</th><th>必要ペース</th><th>比較</th><th>CT</th><th>特訓</th><th>宿題</th><th>アラート</th><th>更新</th></tr>'
+          new = '<div class="card"><div class="tableWrap"><table class="adminStudentsTable"><thead><tr><th>生徒</th><th>ID</th><th>教室</th><th>学年</th><th>学校</th><th>予定科目</th><th>担当講師</th><th>入力科目</th><th>学習単元</th><th>残り</th><th>残り回数</th><th>必要ペース</th><th>比較</th><th>CT</th><th>特訓</th><th>宿題</th><th>アラート</th><th>更新</th></tr>'
+          if old not in app:
+              raise SystemExit('admin students table source not found')
+          app = app.replace(old, new, 1)
+
+          marker = '/* Compact admin student list rows. */'
+          css = '''\n/* Compact admin student list rows. */\n.adminStudentsTable{min-width:1380px!important;table-layout:auto}\n.adminStudentsTable th,.adminStudentsTable td{vertical-align:top}\n.adminStudentsTable th:nth-child(7),.adminStudentsTable td:nth-child(7){min-width:92px;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important}\n.adminStudentsTable th:nth-child(13),.adminStudentsTable td:nth-child(13){min-width:160px;max-width:190px;white-space:normal!important;line-height:1.35!important;word-break:normal!important;overflow-wrap:anywhere!important}\n.adminStudentsTable th:nth-child(18),.adminStudentsTable td:nth-child(18){min-width:92px;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important}\n.adminStudentsTable .adminStudentRow td{padding-top:9px;padding-bottom:9px}\n'''
+          if marker not in styles:
+              styles += css
+
+          if "adminStudentsTable" not in test:
+              test += '''\nassert.ok(app.includes('class="adminStudentsTable"'));\nassert.match(styles, /\\.adminStudentsTable th:nth-child\\(7\\),\\.adminStudentsTable td:nth-child\\(7\\)\\{[^}]*white-space:nowrap/);\nassert.match(styles, /\\.adminStudentsTable th:nth-child\\(13\\),\\.adminStudentsTable td:nth-child\\(13\\)\\{[^}]*min-width:160px[^}]*white-space:normal/);\nassert.match(styles, /\\.adminStudentsTable th:nth-child\\(18\\),\\.adminStudentsTable td:nth-child\\(18\\)\\{[^}]*white-space:nowrap/);\n'''
+
+          index = re.sub(r'styles\\.css\\?v=[^\"\']+', 'styles.css?v=20260831-admin-table-density-1', index)
+          index = re.sub(r'app\\.js\\?v=[^\"\']+', 'app.js?v=20260831-admin-table-density-1', index)
+
+          app_path.write_text(app)
+          styles_path.write_text(styles)
+          index_path.write_text(index)
+          test_path.write_text(test)
+          PY
+      - name: Validate
+        run: |
+          node --check app.js
+          node --check tests/admin-elementary-summary.test.mjs
+          grep -F 'class="adminStudentsTable"' app.js
+          grep -F 'Compact admin student list rows.' styles.css
+          npm test
+          git diff --check
+      - name: Commit validated fix
+        run: |
+          rm -f .github/workflows/fix-admin-table-density-20260831.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Compact admin student list rows" || exit 0
+          git push origin HEAD:main
