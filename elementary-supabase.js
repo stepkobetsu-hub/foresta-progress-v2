@@ -719,7 +719,7 @@ function openElementaryHomeworkConfirm({ subject, units, selectedUnitIds, lesson
   };
 }
 
-async function showInteractiveProgression(subject, forceTeacher = false) {
+async function showInteractiveProgression(subject, forceTeacher = false, dataOverride = null) {
   const dashboard = lastDashboard || await loadDashboard().catch(() => null);
   const session = readSession();
   const grade = dashboard?.student?.grade || session?.grade || "";
@@ -729,7 +729,7 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
   try {
     const units = await unitsFor(normalized, grade, level);
     if (!units.length) throw new Error(normalized === "国語" ? "国語の進行表は、NEW小学ワーク・漢字ドリルの進行表登録後に使用できます。" : "進行表を確認できませんでした。");
-    const data = await loadElementaryData(true);
+    const data = dataOverride || await loadElementaryData(true);
     const summary = summaryFor(normalized, units, data);
     const source = normalized === "算数" ? "啓林館" : `フォレスタ小学英語 ${englishKey(level) || ""}`.trim();
     const today = todayJst();
@@ -790,8 +790,9 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
         result.studentId = String(pageStudentId() || "");
         elementaryDataCache.set(result.studentId, result);
         lastElementaryData = result;
-        await showInteractiveProgression(normalized, teacher);
-        await refreshElementaryScreen(false);
+        await updateTopCards(dashboard, result);
+        await replaceElementaryHomework(dashboard, result);
+        await showInteractiveProgression(normalized, teacher, result);
       } catch (error) {
         input.checked = !input.checked;
         input.disabled = false;
