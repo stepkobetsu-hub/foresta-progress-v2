@@ -47,14 +47,14 @@
           <p class="devicePromptTitle">この端末はどちらですか？ <strong class="deviceRequired">必須</strong></p>
           <p id="devicePromptWarning" class="devicePromptWarning">⚠ 先に「自分の端末」か「塾の共用端末」を選んでください。</p>
           <div class="deviceChoices">
-            <button class="deviceChoice" data-device="personal"><strong>自分の端末</strong><small>希望時だけログインを記憶</small></button>
+            <button class="deviceChoice" data-device="personal"><strong>自分の端末</strong><small>ログアウトするまでログインを保持</small></button>
             <button class="deviceChoice" data-device="shared"><strong>塾の共用端末</strong><small>情報を端末に残しません</small></button>
           </div>
         </div>
         <form id="loginForm" class="loginForm" autocomplete="off">
           <label><span id="loginIdLabel">生徒ID</span><input id="loginId" inputmode="numeric" autocomplete="username" required></label>
           <label><span>パスワード</span><input id="loginPassword" type="password" autocomplete="current-password" required></label>
-          <label id="rememberRow" class="checkRow hidden"><input id="rememberLogin" type="checkbox"><span>この端末でログイン状態を記憶する</span></label>
+          <label id="rememberRow" class="checkRow hidden"><input id="rememberLogin" type="checkbox" checked disabled><span>ログアウトするまでログイン状態を保持します</span></label>
           <button class="primaryBtn" type="submit">ログイン</button>
           <button id="adminEntry" class="adminEntry" type="button">管理者画面</button>
           <p id="loginMessage" class="formMessage" role="alert"></p>
@@ -96,7 +96,7 @@
       window.addEventListener('unhandledrejection', () => setTimeout(recover, 0));
     })();
   </script>
-  <script type="module" src="app.js?v=20260831-role-homework-1"></script>
+  <script type="module" src="app.js?v=20260831-session-persistence-1"></script>
   <script src="elementary-session-fix.js?v=20260831-elementary-recovery-1"></script>
   <script type="module" src="elementary-supabase.js?v=20260831-homework-page-filter-2"></script>
   <script type="module" src="v3-homework-ui-fix.js?v=20260831-role-homework-1"></script>

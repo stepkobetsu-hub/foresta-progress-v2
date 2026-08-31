@@ -38,6 +38,23 @@ const REPEAT_HOMEWORK = {
   英語: ["KEYWORDSの暗記", "TRYの赤×直し", "エクササイズの赤×直し"],
 };
 let teacherSearchTimer = 0;
+let sharedIdleTimer = 0;
+const SHARED_IDLE_LOGOUT_MS = 30 * 60 * 1000;
+function resetSharedIdleLogout() {
+  if (sharedIdleTimer) clearTimeout(sharedIdleTimer);
+  sharedIdleTimer = 0;
+  if (!state.session || state.device !== "shared") return;
+  sharedIdleTimer = setTimeout(async () => {
+    try { await api("logout", {}, { silent: true }); } catch (_) {}
+    clearSessions();
+    location.reload();
+  }, SHARED_IDLE_LOGOUT_MS);
+}
+["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+  document.addEventListener(eventName, () => {
+    if (state.device === "shared" && state.session) resetSharedIdleLogout();
+  }, { passive: true });
+});
 const PROGRESSION_CACHE_TTL_MS = 120000;
 // Supabase V3 is the production path. `?legacy=1` is the explicit, non-destructive rollback.
 const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("legacy") !== "1";
@@ -221,12 +238,15 @@ function persistSession() {
   const data = JSON.stringify(state.session);
   sessionStorage.removeItem(KEYS.session);
   localStorage.removeItem(KEYS.local);
-  if (state.device === "personal" && $("rememberLogin")?.checked) localStorage.setItem(KEYS.local, data);
+  if (state.device === "personal") localStorage.setItem(KEYS.local, data);
   else sessionStorage.setItem(KEYS.session, data);
   sessionStorage.setItem(KEYS.device, state.device);
+  resetSharedIdleLogout();
 }
 
 function clearSessions() {
+  if (sharedIdleTimer) clearTimeout(sharedIdleTimer);
+  sharedIdleTimer = 0;
   sessionStorage.removeItem(KEYS.dashboard);
   localStorage.removeItem(KEYS.local);
   localStorage.removeItem(KEYS.admin);
@@ -1582,6 +1602,7 @@ async function restore() {
     state.session = parsed;
     state.role = parsed.role;
     state.device = parsed.deviceMode || sessionStorage.getItem(KEYS.device) || "personal";
+    resetSharedIdleLogout();
     state.activeView = state.role === "student" ? "home" : "search";
 
     if (state.role === "student") {
@@ -1626,7 +1647,7 @@ document.querySelectorAll(".deviceChoice").forEach((button) => button.onclick = 
   if ($("devicePromptWarning")) $("devicePromptWarning").textContent = state.device === "personal" ? "✓ 自分の端末を選択済み" : "✓ 塾の共用端末を選択済み";
   $("loginMessage").textContent = "";
   $("rememberRow").classList.toggle("hidden", state.device !== "personal");
-  if (state.device === "shared") $("rememberLogin").checked = false;
+  $("rememberLogin").checked = state.device === "personal";
 });
 $("loginForm").addEventListener("submit", login);
 $("logoutButton").onclick = async () => { try { await api("logout", {}, { silent: true }); } catch {} clearSessions(); location.reload(); };

@@ -19,3 +19,12 @@ assert.ok(buttons.includes('foresta:open-elementary-homework'));
 assert.ok(buttons.includes('進行表を開く'));
 assert.ok(!buttons.includes('宿題・進行表を訂正'));
 console.log("final hotpath regression tests: ok");
+
+assert.ok(app.includes('if (state.device === "personal") localStorage.setItem(KEYS.local, data);'));
+assert.ok(!app.includes('state.device === "personal" && $("rememberLogin")?.checked'));
+assert.ok(app.includes('const SHARED_IDLE_LOGOUT_MS = 30 * 60 * 1000;'));
+assert.ok(app.includes('function resetSharedIdleLogout()'));
+assert.ok(app.includes('if (state.device === "shared" && state.session) resetSharedIdleLogout();'));
+const indexHtml = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+assert.ok(indexHtml.includes('ログアウトするまでログインを保持'));
+assert.ok(indexHtml.includes('ログアウトするまでログイン状態を保持します'));
