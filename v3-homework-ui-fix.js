@@ -122,8 +122,8 @@ function patchMiddleToolbar() {
   const progress = document.getElementById("inputLesson");
   const old = document.getElementById("correctLesson");
   if (!progress) return;
-  progress.classList.add("progressOpenBtn");
-  progress.textContent = "進行表を開く";
+  if (!progress.classList.contains("progressOpenBtn")) progress.classList.add("progressOpenBtn");
+  if (progress.textContent !== "進行表を開く") progress.textContent = "進行表を開く";
   if (old) {
     const adjust = createAdjustButton(() => document.getElementById("lessonSubject")?.value || "");
     adjust.id = "adjustNextHomework";
@@ -161,8 +161,13 @@ function patch() {
 injectStyles();
 patch();
 let queued = false;
+let patchTimer = 0;
 new MutationObserver(() => {
   if (queued) return;
   queued = true;
-  queueMicrotask(() => { queued = false; patch(); });
-}).observe(document.documentElement, { childList: true, subtree: true });
+  clearTimeout(patchTimer);
+  patchTimer = setTimeout(() => {
+    queued = false;
+    patch();
+  }, 50);
+}).observe(document.getElementById("content") || document.documentElement, { childList: true, subtree: true });
