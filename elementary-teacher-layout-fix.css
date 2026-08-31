@@ -3,3 +3,9 @@
 .elementaryTopTestForm .elementaryFrontScore,.elementaryTopTestForm .elementaryFrontMax,.elementaryTopTestForm .elementaryBackScore,.elementaryTopTestForm .elementaryBackMax{font-size:.62rem!important;line-height:1.05!important;white-space:nowrap!important}
 .elementaryTopTestForm .elementaryBackScoreNote{grid-column:5/span 2;align-self:start;margin-top:-2px;font-size:.59rem;line-height:1.25;color:#74827e;white-space:nowrap}
 @media(max-width:900px){.elementaryTopTestForm .elementaryBackScoreNote{grid-column:1/-1;white-space:normal;margin-top:0}}
+
+/* Elementary unit-test top form row placement. */
+@media(min-width:901px){
+  .elementaryTopTestForm .elementaryTopTestDate{grid-column:7!important;grid-row:1!important;align-self:end!important}
+  .elementaryTopTestForm .elementaryBackScoreNote{grid-column:3/7!important;grid-row:2!important;justify-self:start!important;align-self:start!important;margin-top:-1px!important;font-size:.59rem!important;line-height:1.25!important;color:#74827e!important;white-space:nowrap!important}
+}
