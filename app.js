@@ -1066,11 +1066,14 @@ async function renderToday() {
 
 async function renderAdmin(view) {
   if (view === "ranges") return renderRangeSettings();
-  const data = await api(view === "training" ? "getTrainingRoom" : view === "students" ? "getAdminStudents" : "getAdminDashboard");
-  if (view === "training") return renderTraining(data);
-  let elementarySummaries = new Map();
-  try { elementarySummaries = await loadElementaryAdminSummary(); }
-  catch (error) { status(error.name === "AbortError" ? "小学生進捗の読込がタイムアウトしました。" : error.message, true); }
+  const action = view === "training" ? "getTrainingRoom" : view === "students" ? "getAdminStudents" : "getAdminDashboard";
+  if (view === "training") return renderTraining(await api(action));
+  const elementaryPromise = loadElementaryAdminSummary()
+    .then((map) => ({ map, error: null }))
+    .catch((error) => ({ map: new Map(), error }));
+  const [data, elementaryResult] = await Promise.all([api(action), elementaryPromise]);
+  const elementarySummaries = elementaryResult.map;
+  if (elementaryResult.error) status(elementaryResult.error.name === "AbortError" ? "小学生進捗の読込がタイムアウトしました。" : elementaryResult.error.message, true);
   const rows = (data.students || []).map((row) => mergeElementaryAdminSummary(row, elementarySummaries));
   const filterOptions = data.filterOptions || {};
   const campuses = filterOptions.campuses?.length ? filterOptions.campuses : ["神領", "大手町"];
@@ -1151,7 +1154,7 @@ async function renderRangeSettings() {
 }
 
 function renderTraining(data) {
-  $("content").innerHTML = `<header class="pageHead"><div><h1>特訓部屋管理</h1><p>CTが×になった生徒の対応状況を更新できます。</p></div><a class="secondaryBtn" href="${CONFIG.messageCenterUrl}" target="_blank" rel="noopener">STEP配信システムで保護者へ連絡 ↗</a></header><div class="card"><div class="tableWrap"><table><thead><tr><th>生徒</th><th>教室</th><th>学校</th><th>学年</th><th>教科</th><th>CT単元</th><th>CT実施日</th><th>担当</th><th>状況</th><th>予定日</th><th>実施日</th><th>備考</th><th>保護者連絡</th><th>保存</th></tr></thead><tbody>${(data.items || []).map((x) => `<tr data-training-id="${esc(x.trainingId)}"><td>${esc(x.name)}</td><td>${esc(x.campus)}</td><td>${esc(x.school)}</td><td>${esc(x.grade)}</td><td>${esc(x.subject)}</td><td>${esc(x.unitName)}</td><td>${fmtDate(x.ctDate)}</td><td>${esc(x.teacherName)}</td><td><select class="field trainingStatus"><option ${x.status === "未対応" ? "selected" : ""}>未対応</option><option ${x.status === "実施日決定" ? "selected" : ""}>実施日決定</option><option ${x.status === "完了" ? "selected" : ""}>完了</option></select></td><td><input class="field trainingScheduled" type="date" value="${esc(dateInputValue(x.scheduledDate))}"></td><td><input class="field trainingActual" type="date" value="${esc(dateInputValue(x.actualDate))}"></td><td><textarea class="field trainingNote" rows="2">${esc(x.note)}</textarea></td><td><select class="field trainingGuardian"><option ${x.guardianContactStatus === "未連絡" ? "selected" : ""}>未連絡</option><option ${x.guardianContactStatus === "連絡済み" ? "selected" : ""}>連絡済み</option><option ${x.guardianContactStatus === "不要" ? "selected" : ""}>不要</option></select></td><td><button class="primaryBtn saveTraining">保存</button></td></tr>`).join("") || '<tr><td colspan="14">対象者はいません。</td></tr>'}</tbody></table></div></div>`;
+  $("content").innerHTML = `<header class="pageHead"><div><h1>特訓部屋管理</h1><p>CTが×になった生徒の対応状況を更新できます。</p></div><a class="secondaryBtn" href="${CONFIG.messageCenterUrl}" target="_blank" rel="noopener">STEP配信システムで保護者へ連絡 ↗</a></header><div class="card adminStudentsCard"><div class="tableWrap"><table class="adminStudentsTable"><thead><tr><th>生徒</th><th>教室</th><th>学校</th><th>学年</th><th>教科</th><th>CT単元</th><th>CT実施日</th><th>担当</th><th>状況</th><th>予定日</th><th>実施日</th><th>備考</th><th>保護者連絡</th><th>保存</th></tr></thead><tbody>${(data.items || []).map((x) => `<tr data-training-id="${esc(x.trainingId)}"><td>${esc(x.name)}</td><td>${esc(x.campus)}</td><td>${esc(x.school)}</td><td>${esc(x.grade)}</td><td>${esc(x.subject)}</td><td>${esc(x.unitName)}</td><td>${fmtDate(x.ctDate)}</td><td>${esc(x.teacherName)}</td><td><select class="field trainingStatus"><option ${x.status === "未対応" ? "selected" : ""}>未対応</option><option ${x.status === "実施日決定" ? "selected" : ""}>実施日決定</option><option ${x.status === "完了" ? "selected" : ""}>完了</option></select></td><td><input class="field trainingScheduled" type="date" value="${esc(dateInputValue(x.scheduledDate))}"></td><td><input class="field trainingActual" type="date" value="${esc(dateInputValue(x.actualDate))}"></td><td><textarea class="field trainingNote" rows="2">${esc(x.note)}</textarea></td><td><select class="field trainingGuardian"><option ${x.guardianContactStatus === "未連絡" ? "selected" : ""}>未連絡</option><option ${x.guardianContactStatus === "連絡済み" ? "selected" : ""}>連絡済み</option><option ${x.guardianContactStatus === "不要" ? "selected" : ""}>不要</option></select></td><td><button class="primaryBtn saveTraining">保存</button></td></tr>`).join("") || '<tr><td colspan="14">対象者はいません。</td></tr>'}</tbody></table></div></div>`;
   $("content").querySelectorAll(".saveTraining").forEach((button) => button.onclick = async () => {
     const row = button.closest("tr");
     button.disabled = true;

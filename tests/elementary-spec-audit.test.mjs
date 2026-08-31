@@ -81,3 +81,6 @@ assert.ok(app.includes('foresta:open-elementary-admin-progress'));
 assert.ok(app.includes('const elementaryAdmin = isElementaryGradeValue(s.grade)'));
 assert.ok(app.includes('const adminProgressActions = elementaryAdmin'));
 assert.ok(elem.includes('window.addEventListener("foresta:open-elementary-admin-progress"'));
+
+assert.ok(app.includes("Promise.all([api(action), elementaryPromise])"));
+assert.ok(app.includes('class="adminStudentsTable"'));
