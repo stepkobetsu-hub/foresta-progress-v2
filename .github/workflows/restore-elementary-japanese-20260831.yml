@@ -22,11 +22,21 @@ jobs:
           node-version: 20
       - name: Apply Japanese progression restoration
         run: node scripts/restore-elementary-japanese-20260831.mjs
+      - name: Repair generated Japanese test assertion
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'tests/elementary-japanese-progress.test.mjs';
+          let s = fs.readFileSync(path, 'utf8');
+          s = s.replace('assert.match(elem, /normalized === "国語"\\) return loadJapaneseProgressions\\(grade\\)/);', 'assert.ok(elem.includes(\'if (normalized === "国語") return loadJapaneseProgressions(grade);\'));');
+          fs.writeFileSync(path, s);
+          NODE
       - name: Validate JavaScript
         run: |
           node --check elementary-supabase.js
           node --check app.js
           node --check v3-homework-ui-fix.js
+          node --check tests/elementary-japanese-progress.test.mjs
       - name: Run full tests
         run: npm test
       - name: Commit validated restoration
