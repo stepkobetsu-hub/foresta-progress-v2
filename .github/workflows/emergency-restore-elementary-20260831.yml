@@ -1,0 +1,82 @@
+name: Emergency restore elementary 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/emergency-restore-elementary-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Patch elementary module safely
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('elementary-supabase.js')
+          s = p.read_text(encoding='utf-8')
+          old = '''const observer = new MutationObserver(() => { queueMicrotask(enhanceElementary); queueMicrotask(enhanceElementaryHomeworkOnly); });
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+          window.addEventListener("DOMContentLoaded", () => { enhanceElementary(); enhanceElementaryHomeworkOnly(); });
+          setTimeout(() => { enhanceElementary(); enhanceElementaryHomeworkOnly(); }, 500);'''
+          new = '''let elementaryObserverTimer = 0;
+          let elementaryObserverRunning = false;
+          const elementaryObserverOptions = { childList: true, subtree: true };
+          const elementaryObserverTarget = () => document.getElementById("content") || document.documentElement;
+
+          async function runElementaryEnhancementsSafely() {
+            if (elementaryObserverRunning) return;
+            elementaryObserverRunning = true;
+            observer.disconnect();
+            try {
+              await enhanceElementary();
+              await enhanceElementaryHomeworkOnly();
+            } finally {
+              elementaryObserverRunning = false;
+              observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
+            }
+          }
+
+          const observer = new MutationObserver(() => {
+            clearTimeout(elementaryObserverTimer);
+            elementaryObserverTimer = setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 80);
+          });
+          observer.observe(elementaryObserverTarget(), elementaryObserverOptions);
+          window.addEventListener("DOMContentLoaded", () => { runElementaryEnhancementsSafely().catch(() => {}); });
+          setTimeout(() => { runElementaryEnhancementsSafely().catch(() => {}); }, 500);'''
+          if old not in s:
+              raise SystemExit('expected old elementary observer block not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+
+          h = Path('index.html').read_text(encoding='utf-8')
+          needle = '  <script type="module" src="app.js?v=20260831-core-recovery-1"></script>\n'
+          extra = needle + '  <script src="elementary-session-fix.js?v=20260831-elementary-recovery-1"></script>\n  <script type="module" src="elementary-supabase.js?v=20260831-elementary-recovery-1"></script>\n'
+          if needle not in h:
+              raise SystemExit('core app script marker not found')
+          h = h.replace(needle, extra, 1)
+          Path('index.html').write_text(h, encoding='utf-8')
+      - name: Validate
+        run: |
+          node --check app.js
+          node --check elementary-supabase.js
+          grep -q 'runElementaryEnhancementsSafely' elementary-supabase.js
+          grep -q 'elementary-supabase.js?v=20260831-elementary-recovery-1' index.html
+      - name: Commit recovery
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add elementary-supabase.js index.html
+          git commit -m "Restore elementary progression and saving safely"
+          git push origin HEAD:main
