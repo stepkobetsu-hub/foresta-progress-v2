@@ -360,11 +360,18 @@ function ensureElementaryCustomHomeworkForm(dashboard) {
   const form = list.parentElement.querySelector('.elementaryCustomHomeworkForm');
   const customSubject = form.querySelector('.elementaryCustomHomeworkSubject');
   const customInput = form.querySelector('.elementaryCustomHomeworkText input');
+  const lessonSubjectSelect = document.getElementById("elementaryLessonSubject");
   const updateCustomHomeworkPlaceholder = () => {
     customInput.placeholder = normalizeSubject(customSubject.value) === "国語" ? "教科書漢字ドリルなど" : "例：漢字ドリル p.20〜21";
   };
+  const syncCustomHomeworkSubject = () => {
+    const lessonSubject = normalizeSubject(lessonSubjectSelect?.value || "");
+    if (lessonSubject && subjects.includes(lessonSubject)) customSubject.value = lessonSubject;
+    updateCustomHomeworkPlaceholder();
+  };
   customSubject.addEventListener('change', updateCustomHomeworkPlaceholder);
-  updateCustomHomeworkPlaceholder();
+  lessonSubjectSelect?.addEventListener('change', syncCustomHomeworkSubject);
+  syncCustomHomeworkSubject();
   form.onsubmit = async (event) => {
     event.preventDefault();
     const input = form.querySelector('.elementaryCustomHomeworkText input');
@@ -560,10 +567,11 @@ function chapterGroups(units, subject = "") {
   for (const [index, unit] of (units || []).entries()) {
     const raw = String(unit.chapter || String(unit.unitNumber || "").split("-")[0] || index + 1).trim();
     if (!groups.has(raw)) {
+      const chapterLabel = /^\d+$/u.test(raw) ? `第${raw}章` : raw;
       groups.set(raw, {
         key: raw,
         unitId: `chapter:${normalizeSubject(subject)}:${raw}`,
-        unitName: `第${raw}章 ${unit.unitName || "単元テスト"}`,
+        unitName: `${chapterLabel} ${unit.unitName || "単元テスト"}`,
         title: unit.unitName || `第${raw}章`,
         units: [],
       });
@@ -630,8 +638,8 @@ async function bindTopTestForm(dashboard) {
         memo: "",
       });
       if (output) output.textContent = "保存しました。";
-      scoreEl.value = "";
-      backScoreEl.value = "";
+      scoreEl.value = "50";
+      backScoreEl.value = "30";
       status("学校の単元テスト（表・裏）を保存しました。");
       await refreshElementaryScreen();
     } catch (error) {
@@ -651,7 +659,7 @@ function openModal(html) {
 function openTestDialog({ subject, unit, onSaved }) {
   const dialog = document.createElement("dialog");
   dialog.className = "elementaryUnitTestDialog";
-  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard" novalidate><button type="button" class="elementaryDialogClose" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryFaceScores"><fieldset><legend>表面</legend><div class="elementaryScoreInputs"><label>点数<input id="eTestScore" class="field" type="number" min="0" max="999" autofocus></label><label>満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div></fieldset><fieldset><legend>裏面</legend><div class="elementaryScoreInputs"><label>点数<input id="eTestBackScore" class="field" type="number" min="0" max="999"></label><label>満点<input id="eTestBackMax" class="field" type="number" min="1" max="999" value="50"></label></div></fieldset></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><div class="elementaryDialogActions"><button type="button" class="ghostBtn elementaryDialogCancel">キャンセル</button><button id="eTestSave" class="primaryBtn" type="button">保存</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog" class="elementaryUnitTestDialogCard" novalidate><button type="button" class="elementaryDialogClose" aria-label="閉じる">×</button><span class="elementaryKicker">学校の単元テスト</span><h3>${esc(subject)}　${esc(unit?.unitName || "単元テスト")}</h3><label>テスト日<input id="eTestDate" class="field" type="date" value="${todayJst()}"></label><div class="elementaryFaceScores"><fieldset><legend class="hidden">表面</legend><div class="elementaryScoreInputs"><label>表面の点数<input id="eTestScore" class="field" type="number" min="0" max="999" value="50" autofocus></label><label>表面の満点<input id="eTestMax" class="field" type="number" min="1" max="999" value="100"></label></div></fieldset><fieldset><legend class="hidden">裏面</legend><div class="elementaryScoreInputs"><label>裏面の点数<input id="eTestBackScore" class="field" type="number" min="0" max="999" value="30"></label><label>裏面の満点<input id="eTestBackMax" class="field" type="number" min="1" max="999" value="50"></label></div></fieldset></div><label>メモ<input id="eTestMemo" class="field" maxlength="120"></label><output id="eTestStatus"></output><div class="elementaryDialogActions"><button type="button" class="ghostBtn elementaryDialogCancel">キャンセル</button><button id="eTestSave" class="primaryBtn" type="button">保存</button></div></form>`;
   document.body.appendChild(dialog);
   const close = () => { if (dialog.open) dialog.close(); };
   dialog.querySelector(".elementaryDialogClose").onclick = close;
@@ -706,6 +714,7 @@ function openElementaryHomeworkConfirm({ subject, units, selectedUnitIds, lesson
   const presets = elementaryHomeworkPresetChoices(normalized);
   const selectedUnits = (units || []).filter((u) => selectedUnitIds.includes(u.unitId));
   if (!selectedUnits.length) { status("今回進んだ単元を1つ以上選んでください。", true); return; }
+  const otherPlaceholder = normalized === "国語" ? "教科書漢字ドリルなど" : "この単元だけのその他の宿題（必要な場合）";
   const groups = selectedUnits.map((unit, index) => {
     const rows = (data?.homework || []).filter((r) => String(r.series || "") === `ELEMENTARY:${normalized}` && String(r.unit_id || "") === String(unit.unitId) && String(r.assigned_date || "") === lessonDate);
     const hasExisting = rows.length > 0;
@@ -715,7 +724,7 @@ function openElementaryHomeworkConfirm({ subject, units, selectedUnitIds, lesson
     }).join("");
     const other = rows.find((r) => String(r.homework_type || "") === "OTHER")?.confirmation_memo || "";
     const unitLabel = [unit.unitNumber, unit.unitName].filter(Boolean).join(" ");
-    return `<details class="unitHomeworkGroup elementaryHomeworkConfirmGroup" data-unit="${esc(unit.unitId)}" ${index === 0 ? "open" : ""}><summary><strong>${esc(unitLabel)}</strong><span class="badge">${presets.length}項目</span></summary><div class="compactHomeworkGrid">${checks}</div><input class="field elementaryOtherHomework" maxlength="120" value="${esc(other)}" placeholder="この単元だけのその他の宿題（必要な場合）"></details>`;
+    return `<details class="unitHomeworkGroup elementaryHomeworkConfirmGroup" data-unit="${esc(unit.unitId)}" ${index === 0 ? "open" : ""}><summary><strong>${esc(unitLabel)}</strong><span class="badge">${presets.length}項目</span></summary><div class="compactHomeworkGrid">${checks}</div><input class="field elementaryOtherHomework" maxlength="120" value="${esc(other)}" placeholder="${esc(otherPlaceholder)}"></details>`;
   }).join("");
   openModal(`<h2>次回宿題を確認</h2><p>${selectedUnits.length}単元の宿題を、単元ごとに確認できます。<strong>不要な宿題はチェックを外してください。</strong> その他の宿題がある場合だけ自由記述します。</p><div class="unitHomeworkGroups">${groups}</div><output id="elementaryHomeworkConfirmStatus" class="lessonSaveStatus" aria-live="polite"></output><div class="actionRow lessonSaveActions"><button id="elementaryBackToProgress" class="ghostBtn" type="button">単元選択へ戻る</button><button id="elementaryConfirmHomework" class="primaryBtn" type="button">授業と宿題を保存</button></div>`);
   document.getElementById("elementaryBackToProgress").onclick = () => showInteractiveProgression(normalized, teacher);
@@ -753,7 +762,7 @@ async function showInteractiveProgression(subject, forceTeacher = false, dataOve
   openModal('<div class="loadingCard"><span class="spinner"></span><p>進行表を読み込み中です…</p></div>');
   try {
     const units = await unitsFor(normalized, grade, level);
-    if (!units.length) throw new Error(normalized === "国語" ? "国語の進行表は、NEW小学ワーク・漢字ドリルの進行表登録後に使用できます。" : "進行表を確認できませんでした。");
+    if (!units.length) throw new Error(normalized === "国語" ? "国語の進行表データを読み込めませんでした。再読み込みしてください。" : "進行表を確認できませんでした。");
     const data = dataOverride || await loadElementaryData(true);
     const summary = summaryFor(normalized, units, data);
     const source = normalized === "算数" ? "啓林館" : normalized === "国語" ? "NEW小学ワーク 光村" : `フォレスタ小学英語 ${englishKey(level) || ""}`.trim();

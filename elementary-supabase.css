@@ -50,3 +50,6 @@
 /* Unified homework archive behaviour for elementary school. */
 .elementaryHomeworkArchiveX{z-index:3}
 .archiveHomeworkList .archivedHomeworkCard{position:relative}
+
+/* Explicit faint hints requested for elementary free-text homework. */
+.elementaryOtherHomework::placeholder,.elementaryCustomHomeworkText input::placeholder{color:#9aa7a3!important;opacity:1;font-weight:400}
