@@ -42,6 +42,8 @@ function route_(data) {
     case 'health': return { status: 'ready', timeZone: CONFIG.TIME_ZONE };
     case 'exportTimetableV3': return exportTimetableV3_(data);
     case 'exportLegacyV3': return exportLegacyV3_(data);
+    case 'exportSnapshotsV3': return exportSnapshotsV3_(data);
+    case 'applyMutationV3': return applyMutationV3_(data);
     case 'studentLogin': return studentLogin_(data);
     case 'staffLogin': return staffLogin_(data);
     case 'resumeSession': return resumeSession_(data);
@@ -331,6 +333,67 @@ function exportLegacyV3_(data) {
   const headers=sheet.getRange(1,1,1,sheet.getLastColumn()).getDisplayValues()[0],count=Math.max(0,Math.min(limit,sheet.getLastRow()-start+1));
   const values=count?sheet.getRange(start,1,count,headers.length).getDisplayValues():[];
   return{tab:tab,headers:headers,rows:values,startRow:start,nextRow:count===limit?start+count:null,totalRows:Math.max(0,sheet.getLastRow()-1),exportedAt:nowIso_()};
+}
+
+function requireV3SyncSecret_(data) {
+  const expected=PropertiesService.getScriptProperties().getProperty('FORESTA_SYNC_SECRET');
+  if(!expected||text_(data&&data.syncSecret)!==expected)throw new Error('FORBIDDEN');
+}
+
+function withV3ServiceSession_(profile,callback) {
+  const token=Utilities.getUuid()+'-'+Utilities.getUuid(),key=CONFIG.SESSION_PREFIX+digest_(token),now=Date.now();
+  const session=Object.assign({},profile,{deviceMode:'shared',issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+10*60000).toISOString()});
+  PropertiesService.getScriptProperties().setProperty(key,JSON.stringify(session));
+  try{return callback(token);}finally{PropertiesService.getScriptProperties().deleteProperty(key);}
+}
+
+function studentSnapshotsV3_(studentId,token) {
+  const dashboard=getStudentDashboard_({token:token,studentId:studentId}),snapshots=[{studentId:studentId,view:'getStudentDashboard',subject:'',payload:dashboard}];
+  const subjects=Array.from(new Set((dashboard.student&&dashboard.student.subjects||[]).map(text_).filter(Boolean)));
+  subjects.forEach(function(subject){snapshots.push({studentId:studentId,view:'getProgression',subject:subject,payload:getProgression_({token:token,studentId:studentId,subject:subject,mode:'lesson'})});});
+  snapshots.push({studentId:studentId,view:'getHomeworkArchive',subject:'',payload:getHomeworkArchive_({token:token,studentId:studentId})});
+  return snapshots;
+}
+
+function exportSnapshotsV3_(data) {
+  requireV3SyncSecret_(data);
+  const requested=Array.from(new Set((data.studentIds||[]).map(text_).filter(Boolean))).slice(0,10),snapshots=[];
+  withV3ServiceSession_({role:'teacher',loginId:'FORESTA_V3_SYNC',name:'Foresta V3 Sync',campus:'神領・大手町',permission:0},function(token){requested.forEach(function(studentId){Array.prototype.push.apply(snapshots,studentSnapshotsV3_(studentId,token));});});
+  if(data.includeGlobal!==false){snapshots.push({studentId:'__global__',view:'searchStudents',subject:'',payload:{students:getActiveStudents_()}});snapshots.push({studentId:'__global__',view:'getTeacherToday',subject:'',payload:{students:todayScheduledStudents_()}});}
+  return{snapshots:snapshots,studentCount:requested.length,exportedAt:nowIso_()};
+}
+
+function v3MirrorSheet_() {
+  const book=REQUEST_CACHE.dataBook||(REQUEST_CACHE.dataBook=SpreadsheetApp.openById(CONFIG.DATA_SPREADSHEET_ID));
+  let sheet=book.getSheetByName('SupabaseV3ミラー');
+  if(!sheet){sheet=book.insertSheet('SupabaseV3ミラー');sheet.getRange(1,1,1,7).setValues([['Mutation ID','Action','Status','Actor','Created At','Updated At','Result']]);sheet.setFrozenRows(1);}
+  return sheet;
+}
+
+function dispatchMutationV3_(action,payload) {
+  const handlers={saveLesson:saveLesson_,updateLessonCorrection:updateLessonCorrection_,saveSchoolPosition:saveSchoolPosition_,saveRange:saveRange_,saveCt:saveCt_,saveStudentRoundProgress:saveStudentRoundProgress_,studentCheckHomework:studentCheckHomework_,teacherCheckHomework:teacherCheckHomework_,archiveHomework:archiveHomework_,restoreHomework:restoreHomework_,deleteHomework:deleteHomework_,saveTargets:saveTargets_,saveComment:saveComment_,saveNote:saveNote_,markCommentRead:markCommentRead_,updateTrainingRoom:updateTrainingRoom_,saveSchoolTextbook:saveSchoolTextbook_};
+  if(!handlers[action])throw new Error('INVALID_ACTION');
+  return handlers[action](payload);
+}
+
+function applyMutationV3_(data) {
+  requireV3SyncSecret_(data);
+  const mutationId=text_(data.mutationId),action=text_(data.mutationAction),actor=data.actor||{},role=text_(actor.role),request=Object.assign({},data.payload||{});
+  if(!mutationId||!action||['student','teacher','admin'].indexOf(role)<0)throw new Error('INVALID_VALUE');
+  const lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
+    const sheet=v3MirrorSheet_(),hit=sheet.getRange(2,1,Math.max(1,sheet.getLastRow()-1),1).createTextFinder(mutationId).matchEntireCell(true).findNext();
+    if(hit){const status=text_(sheet.getRange(hit.getRow(),3).getValue());if(status==='mirrored'){const raw=text_(sheet.getRange(hit.getRow(),7).getValue()),studentId=text_(request.studentId||actor.studentId);let snapshots=[];if(studentId)withV3ServiceSession_({role:'teacher',loginId:'FORESTA_V3_SYNC',name:'Foresta V3 Sync',campus:'神領・大手町',permission:0},function(token){snapshots=studentSnapshotsV3_(studentId,token);});return{duplicate:true,result:raw?JSON.parse(raw):{},snapshots:snapshots};}if(status==='processing')throw new Error('MIRROR_IN_PROGRESS');}
+    const row=hit?hit.getRow():sheet.getLastRow()+1,now=new Date();
+    if(!hit)sheet.getRange(row,1,1,7).setValues([[mutationId,action,'processing',text_(actor.loginId||actor.studentId),now,now,'']]);else sheet.getRange(row,3,1,4).setValues([['processing',text_(actor.loginId||actor.studentId),sheet.getRange(row,5).getValue()||now,now]]);
+    request.mutationId=mutationId;if(!request.idempotencyKey)request.idempotencyKey=mutationId;
+    const response=withV3ServiceSession_(actor,function(token){request.token=token;if(role==='admin')request.adminToken=token;return dispatchMutationV3_(action,request);});
+    let snapshots=[];const studentId=text_(request.studentId||actor.studentId);
+    if(studentId)withV3ServiceSession_({role:'teacher',loginId:'FORESTA_V3_SYNC',name:'Foresta V3 Sync',campus:'神領・大手町',permission:0},function(token){snapshots=studentSnapshotsV3_(studentId,token);});
+    sheet.getRange(row,3).setValue('mirrored');sheet.getRange(row,6).setValue(new Date());sheet.getRange(row,7).setValue(JSON.stringify(response||{}));
+    return{duplicate:false,result:response||{},snapshots:snapshots};
+  }catch(error){try{const sheet=v3MirrorSheet_(),hit=sheet.getRange(2,1,Math.max(1,sheet.getLastRow()-1),1).createTextFinder(mutationId).matchEntireCell(true).findNext();if(hit){sheet.getRange(hit.getRow(),3).setValue('failed');sheet.getRange(hit.getRow(),6).setValue(new Date());sheet.getRange(hit.getRow(),7).setValue(JSON.stringify({error:String(error&&error.message||error)}));}}catch(_){ }throw error;
+  }finally{lock.releaseLock();}
 }
 function subjectCacheMap_(){const map={};objects_('受講科目キャッシュ').forEach(function(row){const id=text_(row['生徒ID']);if(!id)return;if(!map[id])map[id]={subjects:[],englishLevel:text_(row['英語レベル']),mathLevel:text_(row['数学レベル'])};const subject=text_(row['受講科目']);if(subject&&map[id].subjects.indexOf(subject)<0)map[id].subjects.push(subject);if(!map[id].englishLevel)map[id].englishLevel=text_(row['英語レベル']);if(!map[id].mathLevel)map[id].mathLevel=text_(row['数学レベル']);});return map;}
 function studentCourseInfo_(studentId){const id=text_(studentId),live=timetableMap_()[id],cached=subjectCacheMap_()[id];if(live)return live;if(cached)return cached;return{subjects:[],englishLevel:'',mathLevel:''};}
