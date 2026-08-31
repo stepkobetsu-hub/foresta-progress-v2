@@ -70,3 +70,8 @@ assert.ok(app.includes('※裏面がないテストは、裏面の点数・満�
 assert.ok(elem.includes('※裏面がないテストは、裏面の点数・満点は空欄でかまいません。'));
 assert.ok(!app.includes('裏面の点数（ない場合は空欄）'));
 assert.ok(!elem.includes('裏面の点数（ない場合は空欄）'));
+
+assert.ok(app.includes('class="elementaryHeaderNotice"'));
+assert.ok(app.includes('data.note?.text || "注意事項は登録されていません。"'));
+assert.ok(app.includes('class="adminNoteEditor"'));
+assert.ok(app.includes('class="primaryBtn adminNoteSave"'));

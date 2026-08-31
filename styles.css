@@ -263,3 +263,9 @@ body[data-login-role="teacher"] .loginCard{border-top:5px solid #168276}
   .contentPane{min-width:0;max-width:100%}
 }
 @media(max-width:460px){.brand>span:last-child{display:none}.modeIndicator span{padding:5px;font-size:.61rem}.topbar{padding-inline:12px}.elementaryHomeworkPageHead .actionRow{grid-template-columns:1fr}}
+
+/* Wider admin guidance-note editor with a smaller save button. */
+.adminNoteEditor{display:flex;align-items:flex-end;gap:8px;width:100%}
+.adminNoteEditor #adminNote{flex:1 1 auto;min-width:0;width:100%;resize:vertical}
+.adminNoteEditor .adminNoteSave{flex:0 0 auto;padding:7px 10px!important;font-size:.74rem!important;line-height:1.15!important;white-space:nowrap;min-height:36px}
+@media(max-width:620px){.adminNoteEditor{align-items:stretch;flex-direction:column}.adminNoteEditor .adminNoteSave{align-self:flex-end}}

@@ -9,3 +9,11 @@
   .elementaryTopTestForm .elementaryTopTestDate{grid-column:7!important;grid-row:1!important;align-self:end!important}
   .elementaryTopTestForm .elementaryBackScoreNote{grid-column:3/7!important;grid-row:2!important;justify-self:start!important;align-self:start!important;margin-top:-1px!important;font-size:.59rem!important;line-height:1.25!important;color:#74827e!important;white-space:nowrap!important}
 }
+
+/* Compact guidance note beside the elementary student name. */
+.elementaryStudentPageHead{align-items:stretch!important}
+.elementaryHeaderNotice{margin-left:auto;width:min(390px,42%);min-width:260px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 13px;border:1px solid #d9e6e2;border-radius:14px;background:#f8fcfa;cursor:pointer;overflow:hidden}
+.elementaryHeaderNotice span{font-size:.68rem;font-weight:900;color:#527068}
+.elementaryHeaderNotice strong{font-size:.82rem;line-height:1.45;color:#203f39;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.elementaryHeaderNotice:hover{border-color:#88beb2;background:#f1faf7}
+@media(max-width:760px){.elementaryStudentPageHead{display:block!important}.elementaryHeaderNotice{width:100%;min-width:0;margin:12px 0 0}}
