@@ -29,11 +29,13 @@ jobs:
           app_path = Path('app.js')
           elem_path = Path('elementary-supabase.js')
           test_path = Path('tests/elementary-spec-audit.test.mjs')
+          admin_test_path = Path('tests/admin-elementary-summary.test.mjs')
           index_path = Path('index.html')
 
           app = app_path.read_text()
           elem = elem_path.read_text()
           test = test_path.read_text()
+          admin_test = admin_test_path.read_text()
           index = index_path.read_text()
 
           old = '最近の学校単元テストを聞き取り、表面・裏面をまとめて入力します。'
@@ -74,8 +76,14 @@ jobs:
               raise SystemExit('old required-back audit assertion not found')
           test = test.replace(old_test, new_test, 1)
           test = test.replace("assert.ok(elem.includes('裏面の点数<input id=\"eTestBackScore\"'));", "assert.ok(elem.includes('裏面の点数（ない場合は空欄）<input id=\"eTestBackScore\"'));", 1)
-          if "scoreEl.value === \"\" || backScoreEl.value === \"\"" not in test:
+          if 'scoreEl.value === "" || backScoreEl.value === ""' not in test:
               test += '\nassert.ok(elem.includes(\'if (scoreEl.value === "")\'));\nassert.ok(!elem.includes(\'scoreEl.value === "" || backScoreEl.value === ""\'));\nassert.ok(elem.includes(\'if (score === "")\'));\nassert.ok(!elem.includes(\'score === "" || backScore === ""\'));\n'
+
+          old_admin = 'assert.match(app, /裏面の点数<input id="elementaryTopTestBackScore"[^>]*value="30"/);'
+          new_admin = 'assert.match(app, /裏面の点数（ない場合は空欄）<input id="elementaryTopTestBackScore"[^>]*value="30"/);'
+          if old_admin not in admin_test:
+              raise SystemExit('admin back-score assertion not found')
+          admin_test = admin_test.replace(old_admin, new_admin, 1)
 
           index = re.sub(r'app\.js\?v=[^\"\']+', 'app.js?v=20260831-optional-back-score-1', index)
           index = re.sub(r'elementary-supabase\.js\?v=[^\"\']+', 'elementary-supabase.js?v=20260831-optional-back-score-1', index)
@@ -83,6 +91,7 @@ jobs:
           app_path.write_text(app)
           elem_path.write_text(elem)
           test_path.write_text(test)
+          admin_test_path.write_text(admin_test)
           index_path.write_text(index)
           PY
       - name: Validate
@@ -90,11 +99,12 @@ jobs:
           node --check app.js
           node --check elementary-supabase.js
           node --check tests/elementary-spec-audit.test.mjs
+          node --check tests/admin-elementary-summary.test.mjs
           npm test
       - name: Commit validated fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app.js elementary-supabase.js index.html tests/elementary-spec-audit.test.mjs
+          git add app.js elementary-supabase.js index.html tests/elementary-spec-audit.test.mjs tests/admin-elementary-summary.test.mjs
           git commit -m "Allow front-only elementary unit test scores" || exit 0
           git push origin HEAD:main
