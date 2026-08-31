@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';
+const app=fs.readFileSync('app.js','utf8'),config=fs.readFileSync('config.js','utf8'),sql=fs.readFileSync('supabase/migrations/202608310001_foresta_v3.sql','utf8'),runtime=fs.readFileSync('supabase/functions/foresta-runtime-v3/index.ts','utf8');
+assert.match(app,/get\("legacy"\) !== "1"/);assert.doesNotMatch(config,/staging/);assert.match(app,/crypto\.randomUUID/);assert.match(sql,/enable row level security/g);assert.match(sql,/foresta_v3_mutations_retry/);assert.doesNotMatch(runtime,/payload:\{\.\.\.body\}/);assert.match(runtime,/delete safe\.token/);assert.match(runtime,/token_hash/);assert.doesNotMatch(config,/service.role|service_role|eyJ/i);console.log('v3 cutover contract: ok');

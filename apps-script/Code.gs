@@ -40,6 +40,8 @@ function doPost(e) {
 function route_(data) {
   switch (String(data.action || '')) {
     case 'health': return { status: 'ready', timeZone: CONFIG.TIME_ZONE };
+    case 'exportTimetableV3': return exportTimetableV3_(data);
+    case 'exportLegacyV3': return exportLegacyV3_(data);
     case 'studentLogin': return studentLogin_(data);
     case 'staffLogin': return staffLogin_(data);
     case 'resumeSession': return resumeSession_(data);
@@ -295,6 +297,40 @@ function timetableMap_() {
     map[id] = { subjects: subjects, englishLevel: text_(rows[i][40]), mathLevel: text_(rows[i][41]) };
   }
   return map;
+}
+
+// Secret-to-secret export for the V3 refresher. 時間割マスタ, never
+// 受講科目キャッシュ, is authoritative for enrolled subjects and levels.
+function exportTimetableV3_(data) {
+  const expected = PropertiesService.getScriptProperties().getProperty('FORESTA_SYNC_SECRET');
+  if (!expected || text_(data.syncSecret) !== expected) throw new Error('FORBIDDEN');
+  const rows = getTimetableRows_(), students = {};
+  getActiveStudents_().forEach(function(student) { students[student.studentId] = student; });
+  const output = [];
+  for (let i = 2; i < rows.length; i++) {
+    const id = text_(rows[i][0]); if (!id) continue;
+    const subjects = [];
+    for (let col = 4; col < 28; col++) {
+      const subject = text_(rows[i][col]);
+      if (ACTIVE_SUBJECTS.indexOf(subject) >= 0 && subjects.indexOf(subject) < 0) subjects.push(subject);
+    }
+    if (!subjects.length) continue;
+    const englishLevel = text_(rows[i][40]), mathLevel = text_(rows[i][41]);
+    output.push({ studentId: id, studentName: students[id] ? students[id].name : '', subjects: subjects,
+      englishLevel: englishLevel, mathLevel: mathLevel, sourceRow: i + 1,
+      sourceHash: digest_([id, subjects.join('|'), englishLevel, mathLevel].join('\u001f')) });
+  }
+  return { rows: output, exportedAt: nowIso_(), source: '★生徒マスタ202606-/時間割マスタ' };
+}
+function exportLegacyV3_(data) {
+  const expected=PropertiesService.getScriptProperties().getProperty('FORESTA_SYNC_SECRET');
+  if(!expected||text_(data.syncSecret)!==expected)throw new Error('FORBIDDEN');
+  const allowed=['単元マスタ','学校別英語教科書設定','学校テスト日程キャッシュ','学校別予想テスト範囲','学校別決定テスト範囲','学校進度履歴','授業記録','授業実施単元','CT記録','特訓部屋対応','宿題','宿題の生徒チェック','宿題の講師チェック','テスト別目標点','講師コメント','コメント既読管理','生徒注意事項','操作履歴','生徒周回進捗'];
+  const tab=text_(data.tab); if(allowed.indexOf(tab)<0)throw new Error('FORBIDDEN');
+  const sheet=dataSheet_(tab),start=Math.max(2,Number(data.startRow||2)),limit=Math.min(500,Math.max(1,Number(data.limit||500)));
+  const headers=sheet.getRange(1,1,1,sheet.getLastColumn()).getDisplayValues()[0],count=Math.max(0,Math.min(limit,sheet.getLastRow()-start+1));
+  const values=count?sheet.getRange(start,1,count,headers.length).getDisplayValues():[];
+  return{tab:tab,headers:headers,rows:values,startRow:start,nextRow:count===limit?start+count:null,totalRows:Math.max(0,sheet.getLastRow()-1),exportedAt:nowIso_()};
 }
 function subjectCacheMap_(){const map={};objects_('受講科目キャッシュ').forEach(function(row){const id=text_(row['生徒ID']);if(!id)return;if(!map[id])map[id]={subjects:[],englishLevel:text_(row['英語レベル']),mathLevel:text_(row['数学レベル'])};const subject=text_(row['受講科目']);if(subject&&map[id].subjects.indexOf(subject)<0)map[id].subjects.push(subject);if(!map[id].englishLevel)map[id].englishLevel=text_(row['英語レベル']);if(!map[id].mathLevel)map[id].mathLevel=text_(row['数学レベル']);});return map;}
 function studentCourseInfo_(studentId){const id=text_(studentId),live=timetableMap_()[id],cached=subjectCacheMap_()[id];if(live)return live;if(cached)return cached;return{subjects:[],englishLevel:'',mathLevel:''};}
@@ -918,7 +954,15 @@ function markCommentRead_(data){const admin=requireAdmin_(data),id=text_(data.co
 function getTrainingRoom_(data){requireAdmin_(data);const students={};getActiveStudents_().forEach(function(s){students[s.studentId]=s;});const units={};objects_('単元マスタ').forEach(function(u){units[text_(u['単元ID'])]=u;});const cts={};objects_('CT記録').forEach(function(c){cts[text_(c['CTID'])]=c;});return{items:objects_('特訓部屋対応').map(function(r){const s=students[text_(r['生徒ID'])]||{},c=cts[text_(r['CTID'])]||{},u=units[text_(r['単元ID'])]||{};return{trainingId:text_(r['特訓ID']),name:s.name||'',campus:s.campus||'',school:s.school||'',grade:s.grade||'',subject:text_(r['科目']),unitName:text_(u['単元名']),ctDate:c['実施日']||'',teacherName:text_(c['担当講師名']),status:text_(r['対応状況']),scheduledDate:r['実施予定日']||'',actualDate:r['実施日']||'',note:text_(r['備考']),guardianContactStatus:text_(r['保護者連絡状況'])};})};}
 function updateTrainingRoom_(data){const admin=requireAdmin_(data),id=text_(data.trainingId),now=new Date(),found=objects_('特訓部屋対応').find(function(r){return text_(r['特訓ID'])===id;});if(!found)throw new Error('INVALID_VALUE');const next=Object.assign({},found,{'対応状況':text_(data.status)||found['対応状況'],'実施予定日':data.scheduledDate||found['実施予定日'],'実施日':data.actualDate||found['実施日'],'対応者ID':admin.loginId,'対応者名':admin.name,'備考':text_(data.note),'保護者連絡状況':text_(data.guardianContactStatus)||found['保護者連絡状況'],'更新日時':now,'操作者ID':admin.loginId,'操作者名':admin.name});replaceRows_('特訓部屋対応',function(r){return text_(r['特訓ID'])===id;},[next]);return{saved:true};}
 
-function refreshSubjectCache_(data){const admin=requireAdmin_(data),students=getActiveStudents_(),tt=timetableMap_(),now=new Date(),rows=[];students.forEach(function(s){const info=tt[s.studentId]||{subjects:[],englishLevel:'',mathLevel:''},subjects=info.subjects.length?info.subjects:[''];subjects.forEach(function(subject){rows.push({'キャッシュID':'CACHE-'+s.studentId+'-'+(subject||'none'),'生徒ID':s.studentId,'生徒名':s.name,'在籍状態':s.status,'教室':s.campus,'学年':s.grade,'学校名表示':s.school,'学校名正規化キー':s.schoolKey,'受講科目':subject,'英語レベル':info.englishLevel,'数学レベル':info.mathLevel,'取得元':'時間割マスタ','更新日時':now});});});replaceRows_('受講科目キャッシュ',function(){return true;},rows);audit_(admin,'受講科目更新','受講科目キャッシュ','ALL','成功',rows.length+'件');return{count:rows.length};}
+function refreshSubjectCache_(data){
+  const admin=requireAdmin_(data),props=PropertiesService.getScriptProperties(),url=props.getProperty('FORESTA_TIMETABLE_SYNC_URL'),secret=props.getProperty('FORESTA_SYNC_SECRET');
+  if(!url||!secret)throw new Error('SYNC_NOT_CONFIGURED');
+  const response=UrlFetchApp.fetch(url+'?force=1',{method:'post',headers:{Authorization:'Bearer '+secret},muteHttpExceptions:true});
+  const result=JSON.parse(response.getContentText()||'{}');
+  if(response.getResponseCode()>=300||!result.ok)throw new Error('SYNC_FAILED');
+  audit_(admin,'受講科目V3同期','時間割マスタ','ALL','成功',result.rowCount+'件');
+  return{count:result.rowCount,lastSuccessAt:result.lastSuccessAt};
+}
 function saveSchoolTextbook_(data){const admin=requireAdmin_(data),school=text_(data.school),key=normalizeSchool_(school),book=text_(data.textbook),allowed=['ニュークラウン','サンシャイン','ニューホライズン','ワンワールド','ヒアウィゴー','ブルースカイ'];if(!key||allowed.indexOf(book)<0)throw new Error('INVALID_VALUE');const now=new Date(),row={'設定ID':'BOOK-'+key,'学校名正規化キー':key,'学校名表示':school,'教科書':book,'根拠URL':'管理者設定','作成日時':now,'更新日時':now,'操作者ID':admin.loginId,'操作者名':admin.name};replaceRows_('学校別英語教科書設定',function(r){return normalizeSchool_(r['学校名正規化キー'])===key;},[row]);return{saved:true};}
 
 

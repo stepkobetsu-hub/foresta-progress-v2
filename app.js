@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.js?v=20260831-fastv3-1";
+import { CONFIG } from "./config.js?v=20260831-v3-cutover";
 import { SUBJECTS, TRACKED_SUBJECTS, formatProgressGroupLabel, formatProgressUnitNumber, homeworkSummary, progressGroupKey } from "./domain.js";
 
 const $ = (id) => document.getElementById(id);
@@ -39,10 +39,11 @@ const REPEAT_HOMEWORK = {
 };
 let teacherSearchTimer = 0;
 const PROGRESSION_CACHE_TTL_MS = 120000;
-const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("fastv3") === "1";
+// Supabase V3 is the production path. `?legacy=1` is the explicit, non-destructive rollback.
+const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("legacy") !== "1";
 const FAST_RUNTIME_AUTH_ACTIONS = new Set(["studentLogin","staffLogin","resumeSession","logout","adminReauth","resumeAdminSession"]);
 const FAST_RUNTIME_READ_ACTIONS = new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive"]);
-const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","studentCheckHomework","teacherCheckHomework"]);
+const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const FAST_LOCAL_READ_ACTIONS = new Set(["getStudentDashboard","getProgression"]);
 const FAST_LOCAL_CACHE_PREFIX = "forestaFastV3:";
 function apiEndpointFor(action) {
@@ -133,6 +134,7 @@ async function api(action, payload = {}, { silent = false, forceNetwork = false 
     }
   }
   const requestBody = { action, token: state.session?.token || "", adminToken: state.adminToken || "", ...payload };
+  if (FAST_RUNTIME_WRITE_ACTIONS.has(action) && !requestBody.mutationId) requestBody.mutationId = crypto.randomUUID();
   const attempt = async (endpoint, fastAttempt = false) => {
     const controller = new AbortController();
     const timeoutMs = fastAttempt ? Math.min(CONFIG.requestTimeoutMs, 12000) : CONFIG.requestTimeoutMs;
@@ -159,18 +161,8 @@ async function api(action, payload = {}, { silent = false, forceNetwork = false 
     status("");
     return result;
   } catch (error) {
-    if (endpoint === CONFIG.fastRuntimeApiUrl) {
-      try {
-        const fallback = await attempt(CONFIG.apiUrl, false);
-        writeFastLocalCache(action, payload, fallback);
-        status("");
-        return { ...fallback, _fastRuntimeFallback: true };
-      } catch (fallbackError) {
-        status("");
-        if (fallbackError.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");
-        throw fallbackError;
-      }
-    }
+    // Never silently put Google Sheets back on the classroom hot path. Operators
+    // can deliberately use `?legacy=1` while V3 is repaired.
     status("");
     if (error.name === "AbortError") throw new Error("通信がタイムアウトしました。もう一度お試しください。");
     throw error;

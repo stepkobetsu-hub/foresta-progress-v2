@@ -1,0 +1,4 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';
+const gas=fs.readFileSync('apps-script/Code.gs','utf8'),sql=fs.readFileSync('supabase/migrations/202608310002_foresta_v3_timetable_reference.sql','utf8'),sync=fs.readFileSync('supabase/functions/foresta-timetable-sync/index.ts','utf8');
+const exporter=gas.slice(gas.indexOf('function exportTimetableV3_'),gas.indexOf('function exportLegacyV3_'));
+assert.match(exporter,/col = 4; col < 28/);assert.match(exporter,/rows\[i\]\[40\]/);assert.match(exporter,/rows\[i\]\[41\]/);assert.doesNotMatch(exporter,/受講科目キャッシュ/);assert.doesNotMatch(gas.match(/function refreshSubjectCache_[\s\S]*?\n\}/)?.[0]||'',/replaceRows_/);assert.match(sql,/last_success_at/);assert.match(sql,/STUDENT_1180_SUBJECT_INVARIANT/);assert.match(sql,/delete from public\.foresta_v3_enrollments/);assert.match(sync,/last-known-good data retained/);assert.match(sync,/next_retry_at/);console.log('v3 timetable sync contract: ok');

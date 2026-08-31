@@ -1,0 +1,5 @@
+project_id = "wisedgcgwaebtkprdhth"
+[functions.foresta-runtime-v3]
+verify_jwt = false
+[functions.foresta-timetable-sync]
+verify_jwt = false
