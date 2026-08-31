@@ -1,0 +1,38 @@
+name: Restore elementary Japanese progression 20260831
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/restore-elementary-japanese-20260831.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply Japanese progression restoration
+        run: node scripts/restore-elementary-japanese-20260831.mjs
+      - name: Validate JavaScript
+        run: |
+          node --check elementary-supabase.js
+          node --check app.js
+          node --check v3-homework-ui-fix.js
+      - name: Run full tests
+        run: npm test
+      - name: Commit validated restoration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add elementary-supabase.js index.html package.json tests/elementary-japanese-progress.test.mjs
+          git commit -m "Restore NEW小学ワーク光村 Japanese progression" || exit 0
+          git push origin HEAD:main
