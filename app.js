@@ -59,7 +59,7 @@ const PROGRESSION_CACHE_TTL_MS = 120000;
 // Supabase V3 is the production path. `?legacy=1` is the explicit, non-destructive rollback.
 const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("legacy") !== "1";
 const FAST_RUNTIME_AUTH_ACTIONS = new Set(["studentLogin","staffLogin","resumeSession","logout","adminReauth","resumeAdminSession"]);
-const FAST_RUNTIME_READ_ACTIONS = new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive"]);
+const FAST_RUNTIME_READ_ACTIONS = new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive","getAdminDashboard","getAdminStudents"]);
 const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const FAST_LOCAL_READ_ACTIONS = new Set(["getStudentDashboard","getProgression"]);
 const FAST_LOCAL_CACHE_PREFIX = "forestaFastV3:";
