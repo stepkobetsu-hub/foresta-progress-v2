@@ -10,8 +10,9 @@ assert.ok(app.includes('FAST_RUNTIME_WRITE_ACTIONS.has(action) ? "高速保存�
 assert.ok(elem.includes('memo: text, assignedDate: todayJst()'));
 assert.ok(elem.includes('"教科書漢字ドリルなど"'));
 assert.ok(elem.includes('if (normalized === "国語") return loadJapaneseProgressions(grade);'));
-assert.ok(elem.includes('if (normalized === "国語") return ["本日の赤×なおし"]'));
-assert.ok(elem.includes('if (normalized === "算数" || normalized === "英語") return ["TRYの赤×なおし", "エクササイズ"]'));
+assert.ok(elem.includes('const selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"]'));
+assert.ok(elem.includes('callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes, other: "" })'));
+assert.ok(elem.includes('callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" })'));
 assert.ok(buttons.includes('次回宿題を確認・調整'));
 assert.ok(buttons.includes('進行表を開く'));
 assert.ok(!buttons.includes('宿題・進行表を訂正'));
