@@ -211,38 +211,6 @@ function setDifferenceBadge(el, value, label) {
   el.classList.add(value == null ? "unset" : value > 0 ? "ahead" : value < 0 ? "behind" : "same");
 }
 
-function defaultElementaryHomework(subject) {
-  const normalized = normalizeSubject(subject);
-  if (normalized === "国語") return ["本日の赤×なおし"];
-  if (normalized === "算数" || normalized === "英語") return ["TRYの赤×なおし", "エクササイズ"];
-  return [];
-}
-
-async function saveElementaryTodayHomework(subject, unitId, lessonDate) {
-  const session = readSession();
-  if (!isTeacherContext(session)) return { saved: false, homeworkCount: 0 };
-  const studentId = String(pageStudentId() || "");
-  if (!studentId || !unitId) return { saved: false, homeworkCount: 0 };
-  const normalized = normalizeSubject(subject);
-  const items = defaultElementaryHomework(normalized);
-  if (!items.length) return { saved: false, homeworkCount: 0 };
-  const teacherId = document.getElementById("elementaryLessonTeacher")?.value || session?.loginId || "";
-  const result = await callApi("saveLesson", {
-    studentId,
-    subject: normalized,
-    unitIds: [unitId],
-    teacherId,
-    idempotencyKey: `ELEM-AUTO|${studentId}|${normalized}|${unitId}|${lessonDate}`,
-    homeworkItems: items,
-    homeworkByUnit: { [unitId]: items },
-    outsideRangeOverrideUnitIds: [unitId],
-  });
-  window.__FORESTA_INVALIDATE_TEACHER_STUDENT__?.(studentId);
-  lastDashboard = null;
-  return result;
-}
-
-
 function elementaryHomeworkTypeLabel(row) {
   const type = String(row?.homework_type || "");
   if (type === "OTHER") return String(row?.confirmation_memo || "その他の宿題");
@@ -718,50 +686,6 @@ function elementaryHomeworkPresetChoices(subject) {
     { value: "EXERCISE", label: "エクササイズ" },
   ];
   return [];
-}
-
-function openElementaryHomeworkConfirm({ subject, units, selectedUnitIds, lessonDate, data, teacher }) {
-  const normalized = normalizeSubject(subject);
-  const presets = elementaryHomeworkPresetChoices(normalized);
-  const selectedUnits = (units || []).filter((u) => selectedUnitIds.includes(u.unitId));
-  if (!selectedUnits.length) { status("今回進んだ単元を1つ以上選んでください。", true); return; }
-  const otherPlaceholder = normalized === "国語" ? "教科書漢字ドリルなど" : "この単元だけのその他の宿題（必要な場合）";
-  const groups = selectedUnits.map((unit, index) => {
-    const rows = (data?.homework || []).filter((r) => String(r.series || "") === `ELEMENTARY:${normalized}` && String(r.unit_id || "") === String(unit.unitId) && String(r.assigned_date || "") === lessonDate);
-    const hasExisting = rows.length > 0;
-    const checks = presets.map((item) => {
-      const checked = hasExisting ? rows.some((r) => String(r.homework_type || "") === item.value) : true;
-      return `<label><input class="elementaryHomeworkPreset" type="checkbox" value="${esc(item.value)}" ${checked ? "checked" : ""}><span>${esc(item.label)}</span></label>`;
-    }).join("");
-    const other = rows.find((r) => String(r.homework_type || "") === "OTHER")?.confirmation_memo || "";
-    const unitLabel = [unit.unitNumber, unit.unitName].filter(Boolean).join(" ");
-    return `<details class="unitHomeworkGroup elementaryHomeworkConfirmGroup" data-unit="${esc(unit.unitId)}" ${index === 0 ? "open" : ""}><summary><strong>${esc(unitLabel)}</strong><span class="badge">${presets.length}項目</span></summary><div class="compactHomeworkGrid">${checks}</div><input class="field elementaryOtherHomework" maxlength="120" value="${esc(other)}" placeholder="${esc(otherPlaceholder)}"></details>`;
-  }).join("");
-  openModal(`<h2>次回宿題を確認</h2><p>${selectedUnits.length}単元の宿題を、単元ごとに確認できます。<strong>不要な宿題はチェックを外してください。</strong> その他の宿題がある場合だけ自由記述します。</p><div class="unitHomeworkGroups">${groups}</div><output id="elementaryHomeworkConfirmStatus" class="lessonSaveStatus" aria-live="polite"></output><div class="actionRow lessonSaveActions"><button id="elementaryBackToProgress" class="ghostBtn" type="button">単元選択へ戻る</button><button id="elementaryConfirmHomework" class="primaryBtn" type="button">授業と宿題を保存</button></div>`);
-  document.getElementById("elementaryBackToProgress").onclick = () => showInteractiveProgression(normalized, teacher);
-  document.getElementById("elementaryConfirmHomework").onclick = async () => {
-    const button = document.getElementById("elementaryConfirmHomework");
-    const output = document.getElementById("elementaryHomeworkConfirmStatus");
-    button.disabled = true;
-    output.textContent = "保存しています…";
-    try {
-      let latest = data;
-      for (const group of document.querySelectorAll(".elementaryHomeworkConfirmGroup")) {
-        const selectedTypes = [...group.querySelectorAll(".elementaryHomeworkPreset:checked")].map((input) => input.value);
-        const other = group.querySelector(".elementaryOtherHomework")?.value.trim() || "";
-        latest = await callElementary("configureHomework", { subject: normalized, unitId: group.dataset.unit, lessonDate, selectedTypes, other });
-      }
-      latest.studentId = String(pageStudentId() || "");
-      elementaryDataCache.set(latest.studentId, latest);
-      lastElementaryData = latest;
-      status("授業と宿題を保存しました。");
-      await showInteractiveProgression(normalized, teacher);
-      await refreshElementaryScreen(false);
-    } catch (error) {
-      output.textContent = error.message;
-      button.disabled = false;
-    }
-  };
 }
 
 async function showInteractiveProgression(subject, forceTeacher = false, dataOverride = null) {

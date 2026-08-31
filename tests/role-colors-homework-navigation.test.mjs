@@ -33,3 +33,9 @@ assert.match(styles, /\.sideNav nav\{min-width:0;max-width:100%;overflow-x:auto\
 assert.match(styles, /\.danger/);
 
 console.log("role colors and elementary homework navigation tests: ok");
+
+assert.ok(!elementary.includes('function saveElementaryTodayHomework'));
+assert.ok(!elementary.includes('function openElementaryHomeworkConfirm'));
+assert.ok(elementary.includes('foresta:open-elementary-homework'));
+assert.ok(elementary.includes('次回の宿題を確認'));
+assert.ok(elementary.includes('教科書漢字ドリルなど'));
