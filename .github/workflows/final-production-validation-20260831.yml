@@ -25,12 +25,24 @@ jobs:
           node --check elementary-session-fix.js
       - name: Required production behavior
         run: |
-          grep -Fq '単元（章）を選ぶ</option>' elementary-supabase.js
-          grep -Fq '教科書漢字ドリルなど' elementary-supabase.js
-          grep -Fq 'selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"]' elementary-supabase.js
-          grep -Fq 'dataOverride || await loadElementaryData(true)' elementary-supabase.js
-          grep -Fq 'progress.textContent !== "進行表を開く"' v3-homework-ui-fix.js
-          grep -Fq '次回宿題を確認・調整' v3-homework-ui-fix.js
-          grep -Fq 'elementary-supabase.js?v=20260831-final-1' index.html
+          node <<'NODE'
+          const fs = require('fs');
+          const elem = fs.readFileSync('elementary-supabase.js','utf8');
+          const buttons = fs.readFileSync('v3-homework-ui-fix.js','utf8');
+          const index = fs.readFileSync('index.html','utf8');
+          const checks = [
+            ['chapter label', elem, '単元（章）を選ぶ</option>'],
+            ['Japanese homework placeholder', elem, '教科書漢字ドリルなど'],
+            ['auto homework', elem, 'selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"]'],
+            ['save result reuse', elem, 'dataOverride || await loadElementaryData(true)'],
+            ['safe observer button patch', buttons, 'progress.textContent !== "進行表を開く"'],
+            ['two-button UI', buttons, '次回宿題を確認・調整'],
+            ['final cache version', index, 'elementary-supabase.js?v=20260831-final-1'],
+          ];
+          const missing = checks.filter(([,haystack,needle]) => !haystack.includes(needle)).map(([name]) => name);
+          if (missing.length) { console.error('Missing:', missing.join(', ')); process.exit(1); }
+          console.log('Required production behavior: OK');
+          NODE
       - name: Full tests
+        if: always()
         run: npm test
