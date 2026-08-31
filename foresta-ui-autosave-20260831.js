@@ -14,21 +14,26 @@
     if (node && node.textContent !== text) node.textContent = text;
   }
 
+  function isNormalLessonProgress() {
+    return [...document.querySelectorAll('#modalBody .lessonDayToggle')]
+      .some((button) => /今日/u.test(button.textContent || ''));
+  }
+
   function refreshUi() {
     Object.entries(SCORE_LABELS).forEach(([id, text]) => setLabelText(id, text));
     const saveLesson = document.getElementById('saveLesson');
-    if (saveLesson && !/訂正/u.test(saveLesson.textContent || '')) {
+    if (saveLesson && isNormalLessonProgress()) {
       saveLesson.textContent = '進行表と宿題を保存';
       saveLesson.title = '進行表を保存すると、既定の次回宿題も同時に保存します';
     }
   }
 
-  // Normal lesson flow only: after the existing progression handler opens the
-  // default-homework confirmation, immediately confirm it. Correction mode is
-  // intentionally excluded so an old record is never changed automatically.
+  // 通常授業だけ、既存の宿題確認画面を内部で即時確定する。
+  // 既存の宿題生成ルールをそのまま使うため、算数・英語等の既定宿題を
+  // 別実装で二重管理しない。過去授業の訂正モードは対象外。
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('#saveLesson');
-    if (!button || /訂正/u.test(button.textContent || '')) return;
+    if (!button || !isNormalLessonProgress()) return;
     queueMicrotask(() => {
       const confirm = document.getElementById('confirmLesson');
       if (!confirm || confirm.disabled) return;
