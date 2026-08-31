@@ -549,7 +549,7 @@ function chapterGroups(units, subject = "") {
 }
 
 function chapterSelectOptions(groups, selected = "") {
-  return '<option value="">大きな単元（章）を選ぶ</option>' + groups.map((g) => `<option value="${esc(g.unitId)}" ${g.unitId === selected ? "selected" : ""}>${esc(g.unitName)}</option>`).join("");
+  return '<option value="">単元（章）を選ぶ</option>' + groups.map((g) => `<option value="${esc(g.unitId)}" ${g.unitId === selected ? "selected" : ""}>${esc(g.unitName)}</option>`).join("");
 }
 
 async function bindTopTestForm(dashboard) {
@@ -588,7 +588,7 @@ async function bindTopTestForm(dashboard) {
     const hasGroups = unitWrap && !unitWrap.classList.contains("hidden");
     const selected = hasGroups ? groups.find((g) => g.unitId === unitEl?.value) : null;
     const unitName = selected?.unitName || form.querySelector("#elementaryTopTestFree")?.value.trim() || "";
-    if (!unitName) { if (output) output.textContent = "大きな単元（章）を選んでください。"; return; }
+    if (!unitName) { if (output) output.textContent = "単元（章）を選んでください。"; return; }
     if (scoreEl.value === "" || backScoreEl.value === "") { if (output) output.textContent = "表面と裏面の点数を入力してください。"; return; }
     button.disabled = true;
     if (output) output.textContent = "保存しています…";
@@ -760,7 +760,7 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
       }
     }
 
-    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "今日の塾進度と学校進度は小単元ごと、学校の単元テストは大きな単元（章）ごとに入力します。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div><div class="elementaryProgressActions"><span>今日の進行を選んだあと、宿題を確認して不要なものを外せます。</span><button id="elementaryAdjustHomework" class="primaryBtn" type="button">次回宿題を確認・調整</button></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>学校単元テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`);
+    openModal(`<div class="elementaryStaticProgress interactive"><div class="elementaryStaticHead"><span class="elementaryKicker">小学生進行表</span><h2>${esc(normalizeGrade(grade))} ${esc(normalized)} / ${esc(source)}</h2><p>${teacher ? "今日の塾進度と学校進度は小単元ごと、学校の単元テストは単元（章）ごとに入力します。" : "学校と塾の現在地を確認できます。"}</p><div class="elementaryProgressSummary"><span>学校 <b>${esc(summary.schoolUnit?.unitName || "未入力")}</b></span><span>塾 <b>${esc(summary.jukuUnit?.unitName || "未入力")}</b></span><strong class="elementaryDifference ${summary.diff == null ? "unset" : summary.diff > 0 ? "ahead" : summary.diff < 0 ? "behind" : "same"}">${esc(summary.label)}</strong></div><div class="elementaryProgressActions"><span>今日の進行を選んだあと、宿題を確認して不要なものを外せます。</span><button id="elementaryAdjustHomework" class="primaryBtn" type="button">次回宿題を確認・調整</button></div></div><div class="elementaryStaticTableWrap"><table class="elementaryStaticTable interactive"><thead><tr><th>番号</th><th>単元</th><th>ページ</th>${teacher ? "<th>今日</th><th>学校</th><th>学校単元テスト</th>" : "<th>記録</th>"}</tr></thead><tbody>${tableRows}</tbody></table></div></div>`);
     if (!teacher) return;
     const body = document.getElementById("modalBody");
     const adjustHomeworkButton = document.getElementById("elementaryAdjustHomework");
@@ -781,11 +781,11 @@ async function showInteractiveProgression(subject, forceTeacher = false) {
           result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" });
           status("今日の進行を取り消しました。関連する本日の宿題も取り消しました。");
         } else {
-          // Match the middle-school flow: selecting today's progress does not finalize homework yet.
-          // Clear the temporary defaults created by the compatibility endpoint; the confirmation screen
-          // starts with the normal presets checked and the teacher decides what to keep.
-          result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes: [], other: "" });
-          status("今日の進行を保存しました。『次回宿題を確認・調整』で宿題を確認して保存してください。");
+          const selectedTypes = normalized === "国語" ? ["TODAY_REDO"] : ["TRY_REDO", "EXERCISE"];
+          result = await callElementary("configureHomework", { subject: normalized, unitId: input.dataset.unit, lessonDate: today, selectedTypes, other: "" });
+          status(normalized === "国語"
+            ? "今日の進行と『本日の赤×なおし』を宿題に保存しました。"
+            : "今日の進行と『TRYの赤×なおし・エクササイズ』を宿題に保存しました。");
         }
         result.studentId = String(pageStudentId() || "");
         elementaryDataCache.set(result.studentId, result);
