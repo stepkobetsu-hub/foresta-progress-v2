@@ -57,6 +57,8 @@ jobs:
           app = app.replace('大きな単元（章）', '単元（章）');
           app = app.replace('<form id="elementaryTopTestForm" class="elementaryTopTestForm">', '<form id="elementaryTopTestForm" class="elementaryTopTestForm" onsubmit="return false">');
           app = app.replace('<button id="correctElementaryLesson" class="ghostBtn">宿題・進行表を訂正</button>', '<button id="correctElementaryLesson" class="ghostBtn homeworkAdjustBtn">次回宿題を確認・調整</button>');
+          app = app.replace('<button id="correctLesson" class="ghostBtn compactCorrectionButton" type="button">宿題・進行表を訂正</button>', '<button id="correctLesson" class="ghostBtn compactCorrectionButton" type="button">次回宿題を確認・調整</button>');
+          app = app.replace('<h2>宿題・進行表を訂正</h2>', '<h2>授業記録を訂正</h2>');
           app = app.replace('  bindElementaryTopTestEntry(data,studentId,rows);\n', '');
           app = app.replace(/  \$\("content"\)\.querySelectorAll\("\.elementaryOpenProgress"\)\.forEach\([^\n]+\);\n/, '');
           app = app.replace(/  \$\("content"\)\.querySelectorAll\("\.elementarySchoolPosition"\)\.forEach\([^\n]+\);\n/, '');
