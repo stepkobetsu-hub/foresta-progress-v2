@@ -56,3 +56,7 @@ assert.match(app,/student\.reading/);
 assert.match(app,/student\.romaji/);
 assert.ok(app.includes('FAST_RUNTIME_WRITE_ACTIONS.has(action) ? "高速保存中…" : "高速読込中…"'));
 console.log("elementary specification audit: ok");
+
+assert.ok(elem.includes('const groupLabel = /^\\d+$/u.test(String(group.key || ""))'));
+assert.ok(!elem.includes('<span>第${esc(group.key)}章</span>'));
+assert.ok(!elem.includes('function elementaryHomeworkPresetChoices'));

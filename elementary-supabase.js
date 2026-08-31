@@ -678,16 +678,6 @@ function openTestDialog({ subject, unit, onSaved }) {
 }
 
 
-function elementaryHomeworkPresetChoices(subject) {
-  const normalized = normalizeSubject(subject);
-  if (normalized === "国語") return [{ value: "TODAY_REDO", label: "本日の赤×なおし" }];
-  if (normalized === "算数" || normalized === "英語") return [
-    { value: "TRY_REDO", label: "TRYの赤×なおし" },
-    { value: "EXERCISE", label: "エクササイズ" },
-  ];
-  return [];
-}
-
 async function showInteractiveProgression(subject, forceTeacher = false, dataOverride = null) {
   const dashboard = lastDashboard || await loadDashboard().catch(() => null);
   const session = readSession();
@@ -720,7 +710,8 @@ async function showInteractiveProgression(subject, forceTeacher = false, dataOve
     let tableRows = "";
     for (const group of groups) {
       const groupTest = testMap.get(group.unitId);
-      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>第${esc(group.key)}章</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : ""}</td>`}</tr>`;
+      const groupLabel = /^\d+$/u.test(String(group.key || "")) ? `第${group.key}章` : String(group.key || "");
+      tableRows += `<tr class="elementaryChapterRow"><td colspan="3"><span>${esc(groupLabel)}</span><strong>${esc(group.title)}</strong></td>${teacher ? `<td></td><td></td><td><button type="button" class="elementaryChapterTest" data-action="chapter-test" data-chapter="${esc(group.key)}">${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : "学校テスト入力"}</button></td>` : `<td>${groupTest ? `学校テスト ${esc(testScoreText(groupTest))}` : ""}</td>`}</tr>`;
       for (const u of group.units) {
         const dates = (lessonDates.get(u.unitId) || []).sort().reverse();
         const learned = dates.length > 0;
