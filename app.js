@@ -60,7 +60,7 @@ const PROGRESSION_CACHE_TTL_MS = 120000;
 const FAST_RUNTIME_ENABLED = new URLSearchParams(location.search).get("legacy") !== "1";
 const FAST_RUNTIME_AUTH_ACTIONS = new Set(["studentLogin","staffLogin","resumeSession","logout","adminReauth","resumeAdminSession"]);
 const FAST_RUNTIME_READ_ACTIONS = new Set(["getStudentDashboard","getProgression","searchStudents","getTeacherToday","getHomeworkArchive","getAdminDashboard","getAdminStudents"]);
-const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveRange","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
+const FAST_RUNTIME_WRITE_ACTIONS = new Set(["saveLesson","updateLessonCorrection","saveSchoolPosition","saveCt","saveStudentRoundProgress","studentCheckHomework","teacherCheckHomework","archiveHomework","restoreHomework","deleteHomework","saveTargets","saveComment","saveNote","markCommentRead","updateTrainingRoom","saveSchoolTextbook"]);
 const FAST_LOCAL_READ_ACTIONS = new Set(["getStudentDashboard","getProgression"]);
 const FAST_LOCAL_CACHE_PREFIX = "forestaFastV3:";
 function apiEndpointFor(action) {
@@ -1134,9 +1134,14 @@ async function renderRangeSettings() {
   $("content").innerHTML = `<header class="pageHead"><div><span class="adminRangeKicker">管理者アプリの中心機能</span><h1>進行表・テスト範囲設定</h1><p>生徒IDを使わず、下の順序で設定してください。</p></div><div class="actionRow"><a class="secondaryBtn" href="https://stepkobetsu-hub.github.io/seiseki-kanri/admin.html#schools" target="_blank" rel="noopener">学校・テスト日程登録 ↗</a><button id="backAdminDashboard" class="ghostBtn" type="button">← 本日の速報へ</button></div></header><article class="card"><div class="formGrid"><label><span>1. 学校</span><select id="rangeSchool" class="field"><option value="">選択</option>${setup.schools.map((s) => `<option>${esc(s)}</option>`).join("")}</select></label><label><span>2. 学年</span><select id="rangeGrade" class="field"><option>中1</option><option>中2</option><option>中3</option></select></label><label><span>3. 科目</span><select id="rangeSubject" class="field">${TRACKED_SUBJECTS.map((subject) => `<option>${esc(subject)}</option>`).join("")}</select></label><label><span>4. 次回テスト</span><select id="rangeTest" class="field"><option value="">学校を選択</option></select></label><label><span>5. 予想範囲／決定範囲</span><select id="rangeType" class="field"><option value="予想">次回テスト範囲（予想）</option><option value="決定">次回テスト範囲（決定版）</option></select></label></div><div class="actionRow" style="margin-top:14px"><button id="openRangeEditor" class="primaryBtn">6. 進行表全体を開く</button><span id="targetCount" class="badge">対象生徒 0名</span></div><p class="muted">進行表上で複数単元をチェックし、選択範囲を保存できます。</p></article><article class="card rareSettingsCard" style="margin-top:14px"><div class="rareSettingsHeader"><div><p class="cardTitle">英語教科書の例外設定</p><p class="muted">通常はニューホライズンです。特殊な私立学校など、例外がある場合だけ開いてください。</p></div><button id="toggleTextbookSettings" class="ghostBtn" type="button" aria-expanded="false">英語教科書の例外設定を開く</button></div><div id="textbookSettings" class="hidden"><div class="formGrid"><label><span>学校</span><select id="textbookSchool" class="field"><option value="">選択</option>${setup.schools.map((s) => `<option>${esc(s)}</option>`).join("")}</select></label><label><span>教科書</span><select id="textbookName" class="field">${textbookOptions.map((name) => `<option>${name}</option>`).join("")}</select></label></div><button id="saveTextbook" class="secondaryBtn" style="margin-top:12px">例外の教科書設定を保存</button></div></article>`;
   $("backAdminDashboard").onclick = () => openView("admin");
   const school = $("rangeSchool"), test = $("rangeTest");
+  let rangeOptionsGeneration = 0;
   const update = async () => {
+    const generation = ++rangeOptionsGeneration;
+    const requested = { school: school.value, grade: $("rangeGrade").value, subject: $("rangeSubject").value };
     if (!school.value) return;
-    const data = await api("getRangeOptions", { school: school.value, grade: $("rangeGrade").value, subject: $("rangeSubject").value });
+    test.innerHTML = '<option value="">読み込み中…</option>';
+    const data = await api("getRangeOptions", requested);
+    if (generation !== rangeOptionsGeneration || requested.school !== school.value || requested.grade !== $("rangeGrade").value || requested.subject !== $("rangeSubject").value) return;
     test.innerHTML = (data.tests || []).map((t) => `<option value="${esc(t.testId)}">${esc(t.name)} ${fmtDate(t.startDate)}〜${fmtDate(t.endDate)}</option>`).join("") || '<option value="">次回テスト未登録</option>';
     $("targetCount").textContent = `対象生徒 ${data.targetCount || 0}名`;
   };
@@ -1310,17 +1315,32 @@ async function openProgress(options) {
     let rangeSaveTimer = 0;
     let rangeSaving = false;
     let rangeDirty = false;
+    let rangeClosing = false;
     const rangeStatus = () => $("rangeAutoSave");
+    const rangeContextIsCurrent = () => !rangeMode || (
+      $("rangeSchool")?.value === options.school &&
+      $("rangeGrade")?.value === options.grade &&
+      $("rangeSubject")?.value === options.subject &&
+      $("rangeTest")?.value === options.testId &&
+      $("rangeType")?.value === options.rangeType
+    );
     const saveRangeSelection = async () => {
       if (!rangeMode) return true;
       if (rangeSaving) { rangeDirty = true; return; }
       clearTimeout(rangeSaveTimer);
+      if (!rangeContextIsCurrent()) {
+        rangeDirty = true;
+        if (rangeStatus()) rangeStatus().textContent = "選択条件が変わりました・開き直してください";
+        status("学校・学年・科目・テストの選択が変わりました。最新条件で進行表を開き直してください。", true);
+        return false;
+      }
       rangeSaving = true;
       rangeDirty = false;
       const unitIds = checks.filter((c) => c.checked).map((c) => c.value);
       if (rangeStatus()) rangeStatus().textContent = "自動保存中…";
       try {
-        await api("saveRange", { ...options, unitIds }, { silent: true });
+        const result = await api("saveRange", { ...options, unitIds }, { silent: true });
+        if (result?.queued || !Number.isInteger(result?.saved)) throw new Error("保存完了を確認できませんでした。もう一度お試しください。");
         invalidateProgressionCache(options);
         if (rangeStatus()) rangeStatus().textContent = "自動保存済み";
         return true;
@@ -1330,14 +1350,14 @@ async function openProgress(options) {
         return false;
       } finally {
         rangeSaving = false;
-        if (rangeDirty) {
+        if (rangeDirty && !rangeClosing) {
           rangeDirty = false;
           rangeSaveTimer = setTimeout(saveRangeSelection, 80);
         }
       }
     };
     const scheduleRangeSave = () => {
-      if (!rangeMode) return;
+      if (!rangeMode || rangeClosing) return;
       rangeDirty = true;
       clearTimeout(rangeSaveTimer);
       if (rangeStatus()) rangeStatus().textContent = "自動保存待ち…";
@@ -1408,6 +1428,7 @@ async function openProgress(options) {
       const button = $("saveRangeClose");
       button.disabled = true;
       button.textContent = "保存して閉じています…";
+      rangeClosing = true;
       clearTimeout(rangeSaveTimer);
       rangeDirty = false;
       checks.forEach((check) => { check.disabled = true; });
@@ -1419,6 +1440,7 @@ async function openProgress(options) {
         closeModal();
         return;
       }
+      rangeClosing = false;
       checks.forEach((check) => { check.disabled = false; });
       groupToggles.forEach((toggle) => { toggle.disabled = false; });
       button.disabled = false;

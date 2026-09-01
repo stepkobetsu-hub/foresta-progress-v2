@@ -387,6 +387,9 @@ function applyMutationV3_(data) {
   requireV3SyncSecret_(data);
   const mutationId=text_(data.mutationId),action=text_(data.mutationAction),actor=data.actor||{},role=text_(actor.role),request=Object.assign({},data.payload||{});
   if(!mutationId||!action||['student','teacher','admin'].indexOf(role)<0)throw new Error('INVALID_VALUE');
+  // saveRange is now a synchronous GAS write. Never replay an old queued range
+  // mutation after a newer user-confirmed save has completed.
+  if(action==='saveRange')return{duplicate:false,cancelledStale:true,result:{cancelledStale:true},snapshots:[]};
   const lock=LockService.getScriptLock();lock.waitLock(30000);
   try{
     const sheet=v3MirrorSheet_(),hit=sheet.getRange(2,1,Math.max(1,sheet.getLastRow()-1),1).createTextFinder(mutationId).matchEntireCell(true).findNext();
